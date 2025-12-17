@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ system_title }}{% endblock %}</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/select2/css/select2.min.css') }}" rel="stylesheet" />
+    <style>
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 1000; /* Ensure it's above other content */
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.8);
+            padding: 12px 20px;
+            margin: 4px 0;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            transform: translateX(5px);
+        }
+        .main-content {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            transform: translateY(-2px);
+        }
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-pending { background-color: #fff3cd; color: #856404; }
+        .status-approved { background-color: #d4edda; color: #155724; }
+        .status-rejected { background-color: #f8d7da; color: #721c24; }
+        .status-exited { background-color: #d1ecf1; color: #0c5460; }
+
+        /* Custom styles for increased font size in sidebar */
+        .sidebar-company-name {
+            font-size: 1.8rem; /* Adjust as needed */
+            font-weight: bold;
+        }
+        .sidebar-system-title {
+            font-size: 1.2rem; /* Adjust as needed */
+            font-weight: normal;
+        }
+
+        body {
+            zoom: 0.75; /* Scale down the entire application to 75% */
+        }
+    </style>
+    <style media="print">
+        /* Hide sidebar, header, and other non-report elements when printing */
+        .sidebar, .navbar, .main-content .d-flex.justify-content-between, .alert, .card-header .btn-group, .card-header .btn {
+            display: none !important;
+        }
+        .main-content {
+            margin-left: 0 !important;
+            padding: 0 !important;
+        }
+        .container-fluid .row {
+            display: block !important;
+        }
+        .col-md-9.ms-sm-auto.col-lg-10.px-md-4 {
+            width: 100% !important;
+            max-width: 100% !important;
+            flex: none !important;
+        }
+        .card {
+            box-shadow: none !important;
+            border: 1px solid #ccc !important;
+        }
+        .card-body {
+            padding: 0 !important;
+        }
+        /* Ensure table is fully visible */
+        .table-responsive {
+            overflow-x: visible !important;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        thead {
+            display: table-header-group;
+        }
+        tr {
+            page-break-inside: avoid;
+        }
+    </style>
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <div class="text-center mb-4">
+                        <img src="{{ url_for('static', filename='logo.png') }}" alt="Company Logo" style="width: 80px; height: 80px; border-radius: 50%; object-fit: contain; margin: 0 auto 10px auto; display: block; background-color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.2); padding: 5px;">
+                        <h5 class="text-white sidebar-company-name">{{ company_name }}</h5>
+                        <p class="text-white-50 sidebar-system-title mb-0">{{ system_title }}</p>
+                    </div>
+
+                    {% if current_user.is_authenticated %}
+                    <div class="text-center mb-4">
+                        <div class="text-white small">
+                            <i class="fas fa-user me-2"></i> {{ current_user.username }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <ul class="nav flex-column">
+                        {% if current_user.role == 'admin' %}
+                         <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
+                                <i class="fas fa-user-shield me-2"></i> Admin Dashboard
+                            </a>
+                        </li>
+                        {% endif %}                        
+                        {% if current_user.role in ['admin', 'security', 'employee'] %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                                <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'approval_dashboard' %}active{% endif %}" href="{{ url_for('approval_dashboard') }}">
+                                <i class="fas fa-check-circle me-2"></i> Approvals
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'visitor_status' %}active{% endif %}" href="{{ url_for('visitor_status') }}">
+                                <i class="fas fa-list me-2"></i> Visitor Status
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'register_visitor' %}active{% endif %}" href="{{ url_for('register_visitor') }}">
+                                <i class="fas fa-user-plus me-2"></i> Register Visitor
+                            </a>
+                        </li>
+                        {% endif %}
+                         {% if current_user.role in ['admin', 'security'] %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'check_in_approval' %}active{% endif %}" href="{{ url_for('check_in_approval') }}">
+                                <i class="fas fa-check me-2"></i> Check-in Approval
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'check_out_approval' %}active{% endif %}" href="{{ url_for('check_out_approval') }}">
+                                <i class="fas fa-sign-out-alt me-2"></i> Check-out Approval
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% if current_user.role == 'admin' %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'user_management' %}active{% endif %}" href="{{ url_for('user_management') }}">
+                                <i class="fas fa-users-cog me-2"></i> User Management
+                            </a>
+                        </li>
+                        
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+                                <i class="fas fa-cog me-2"></i> Settings
+                            </a>
+                        </li>
+                    </ul>
+                    {% endif %}
+                    
+                    <hr class="text-white-50">
+                    
+                    <div class="px-3">
+                        <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm w-100">
+                            <i class="fas fa-sign-out-alt me-2"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content" style="margin-left: calc(25% + 1.5rem);">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">{% block page_title %}{% endblock %}</h1>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show auto-dismiss" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+    <div id="visitor-details" style="display:none;" class="card p-3 mt-3">
+        <h3 class="card-title">Visitor Details</h3>
+        <p><strong>Name:</strong> <span id="visitor-name"></span></p>
+        <p><strong>Email:</strong> <span id="visitor-email"></span></p>
+        <p><strong>Mobile:</strong> <span id="visitor-mobile"></span></p>
+        <p><strong>Purpose:</strong> <span id="visitor-purpose"></span></p>
+        <p><strong>Host:</strong> <span id="visitor-host-name"></span></p>
+        <p><strong>Status:</strong> <span id="visitor-status"></span></p>
+        <p><strong>Check-in Time:</strong> <span id="visitor-check-in-time"></span></p>
+        <p><strong>Check-out Time:</strong> <span id="visitor-check-out-time"></span></p>
+        <p><strong>Visitor Type:</strong> <span id="visitor-type"></span></p>
+        <p><strong>Company:</strong> <span id="visitor-company"></span></p>
+        <p><strong>From Date/Time:</strong> <span id="visitor-from-datetime"></span></p>
+        <p><strong>To Date/Time:</strong> <span id="visitor-to-datetime"></span></p>
+        <p><strong>Card Identification Name:</strong> <span id="visitor-card-identification-name"></span></p>
+        <p><strong>Access Group Name:</strong> <span id="visitor-access-group-name"></span></p>
+        <p><strong>Visitor ID:</strong> <span id="visitor-visitor-id"></span></p>
+        <p><strong>Unit:</strong> <span id="visitor-unit"></span></p>
+        <p><strong>Meeting ID:</strong> <span id="visitor-meeting-id"></span></p>
+        <p><strong>Requested By:</strong> <span id="visitor-requested-by"></span></p>
+        <p><strong>No. of Hours:</strong> <span id="visitor-no-of-hours"></span></p>
+        <p><strong>Visit Location:</strong> <span id="visitor-visit-location"></span></p>
+        <p><strong>ID Proof Type:</strong> <span id="visitor-id-proof-type"></span></p>
+        <p><strong>Other ID Proof Type:</strong> <span id="visitor-other-id-proof-type"></span></p>
+        <div id="id-proof-image-container" style="display:none;">
+            <p><strong>ID Proof:</strong></p>
+            <img id="id-proof-image" src="" alt="ID Proof" style="max-width: 200px;">
+        </div>
+        <div id="visitor-image-container" style="display:none;">
+            <p><strong>Visitor Image:</strong></p>
+            <img id="visitor-image" src="" alt="Visitor Image" style="max-width: 200px;">
+        </div>
+        <div id="materials-details" style="display:none;">
+            <p><strong>Material Details:</strong></p>
+            <ul id="materials-list"></ul>
+        </div>
+        <button id="check-in-button" class="btn btn-success">Check-in</button>
+        <button id="cancel-button" class="btn btn-secondary">Cancel</button>
+        <button id="confirm-check-in-button" class="btn btn-primary mt-3" style="display:none;">Confirm Check-in</button>
+    </div>
+    {% else %}
+        {% block auth_content %}{% endblock %}
+    {% endif %}
+    
+    <script src="{{ url_for('static', filename='vendor/jquery/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/select2/js/select2.min.js') }}"></script>
+    <script>
+        // Auto-dismiss flash messages
+        $(document).ready(function() {
+            $('.auto-dismiss').each(function() {
+                var $alert = $(this);
+                var category = $alert.hasClass('alert-success') ? 'success' : 
+                              $alert.hasClass('alert-danger') ? 'error' : 
+                              $alert.hasClass('alert-warning') ? 'warning' : 'info';
+                
+                // Set different timeouts based on message type
+                var timeout = 3000; // 3 seconds for success messages
+                if (category === 'error') {
+                    timeout = 5000; // 5 seconds for error messages
+                } else if (category === 'warning') {
+                    timeout = 4000; // 4 seconds for warning messages
+                }
+                
+                setTimeout(function() {
+                    $alert.fadeOut(500, function() {
+                        $(this).remove();
+                    });
+                }, timeout);
+            });
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

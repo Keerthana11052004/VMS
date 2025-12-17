@@ -1,0 +1,13 @@
+nohup: ignoring input
+[2025-10-17 19:34:29 +0530] [1278179] [INFO] Starting gunicorn 20.1.0
+[2025-10-17 19:34:29 +0530] [1278179] [INFO] Listening at: http://127.0.0.1:8000 (1278179)
+[2025-10-17 19:34:29 +0530] [1278179] [INFO] Using worker: sync
+[2025-10-17 19:34:29 +0530] [1278182] [INFO] Booting worker with pid: 1278182
+2025-10-17 19:34:30,637 - INFO - Application configuration initialized.
+2025-10-17 19:34:30,926 - INFO - Settings loaded from database into app.config
+[2025-10-17 19:35:07 +0530] [1278179] [INFO] Handling signal: hup
+[2025-10-17 19:35:07 +0530] [1278179] [INFO] Hang up: Master
+[2025-10-17 19:35:07 +0530] [1278193] [INFO] Booting worker with pid: 1278193
+[2025-10-17 19:35:07 +0530] [1278179] [WARNING] Worker with pid 1278182 was terminated due to signal 1
+2025-10-17 19:35:08,564 - INFO - Application configuration initialized.
+2025-10-17 19:35:08,870 - INFO - Settings loaded from database into app.config

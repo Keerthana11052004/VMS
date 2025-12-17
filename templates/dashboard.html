@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - VMS Pro{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Statistics Cards -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-4 stats-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-sm font-weight-bold text-primary text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                            Today's Visitors</div>
+                        <div class="h2 mb-0 font-weight-bold text-gray-800">{{ today_visitors }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-users fa-3x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-4 stats-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-sm font-weight-bold text-warning text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                            Pending Approvals</div>
+                        <div class="h2 mb-0 font-weight-bold text-gray-800">{{ pending_approvals }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-clock fa-3x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-4 stats-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-sm font-weight-bold text-success text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                            Total Exits</div>
+                        <div class="h2 mb-0 font-weight-bold text-gray-800">{{ total_exits }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-sign-out-alt fa-3x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-4 stats-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-sm font-weight-bold text-info text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                            Active Visitors</div>
+                        <div class="h2 mb-0 font-weight-bold text-gray-800">
+                            {{ today_visitors - total_exits if today_visitors > total_exits else 0 }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-user-check fa-3x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('register_visitor') }}" class="btn btn-primary w-100">
+                            <i class="fas fa-user-plus me-2"></i>Register Visitor
+                        </a>
+                    </div>
+                    
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('approval_dashboard') }}" class="btn btn-warning w-100">
+                            <i class="fas fa-check-circle me-2"></i>View Approvals
+                        </a>
+                    </div>
+                    
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('visitor_status') }}" class="btn btn-info w-100">
+                            <i class="fas fa-list me-2"></i>Visitor Status
+                        </a>
+                    </div>
+                    
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('check_in_approval') }}" class="btn btn-secondary w-100">
+                            <i class="fas fa-sign-in-alt me-2"></i>Check-in Approvals
+                        </a>
+                    </div>
+                                        
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Visitors -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Visitors (Today)</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_visitors %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Purpose</th>
+                                <th>Host</th>
+                                <th>Unit</th>
+                                <th>Status</th>
+                                <th>Check-in/out Time</th>
+                                <th>Total Hours Visited</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for visitor in recent_visitors %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-sm bg-primary rounded-circle d-flex align-items-center justify-content-center me-2">
+                                            <span class="text-white fw-bold">{{ visitor.name[0].upper() }}</span>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">{{ visitor.name }}</div>
+                                            <small class="text-muted">{{ visitor.mobile }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{{ visitor.purpose[:50] }}{% if visitor.purpose|length > 50 %}...{% endif %}</td>
+                                <td>{{ visitor.host.username }}</td>
+                                <td>{{ visitor.unit or 'N/A' }}</td>
+                                <td>
+                                    <span class="status-badge status-{{ visitor.status }}">
+                                        {{ visitor.status|title }}
+                                    </span>
+                                </td>
+                               <td>
+                                   {% if visitor.status == 'pending' %}
+                                       Waiting for approval
+                                   {% elif visitor.status == 'approved' %}
+                                       Approved At: {{ visitor.approved_at.strftime('%Y-%m-%d %H:%M:%S') if visitor.approved_at else 'N/A' }}
+                                   {% elif visitor.status == 'checked-in' %}
+                                       Check-in Time: {{ visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A' }}
+                                   {% elif visitor.status == 'exited' %}
+                                       Check-in Time: {{ visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A' }}<br>
+                                       Check-out Time: {{ visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_out_time else 'N/A' }}
+                                   {% else %}
+                                       N/A
+                                   {% endif %}
+                               </td>
+                               <td>{{ visitor.total_hours_visited if visitor.total_hours_visited else 'N/A' }}</td>
+                                
+                                 <td>
+                                     {% if current_user.role in ['admin', 'security'] or (current_user.role == 'employee' and visitor.host_id == current_user.id) %}
+                                         <a href="{{ url_for('get_visitor_details', visitor_id=visitor.Visitor_ID) }}" class="btn btn-sm btn-outline-info" title="View Report">
+                                             <i class="fas fa-file-alt"></i>
+                                         </a>
+                                         <a href="{{ url_for('display_qr_code', visitor_id=visitor.Visitor_ID) }}" class="btn btn-sm btn-outline-primary" title="View QR Code" target="_blank">
+                                             <i class="fas fa-qrcode"></i>
+                                         </a>
+                                         <form action="{{ url_for('delete_visitor', visitor_id=visitor.Visitor_ID) }}" method="POST" style="display:inline;">
+                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                             <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Visitor" onclick="return confirm('Are you sure you want to delete this visitor?');">
+                                                 <i class="fas fa-trash-alt"></i>
+                                             </button>
+                                         </form>
+                                     {% endif %}
+                                     {% if visitor.status == 'approved' and current_user.role in ['admin', 'security'] %}
+                                     <a href="{{ url_for('mark_exited', visitor_id=visitor.Visitor_ID|string) }}"
+                                        class="btn btn-sm btn-outline-danger"
+                                        onclick="return confirm('Mark visitor as exited?')"
+                                        title="Mark as Exited">
+                                         <i class="fas fa-sign-out-alt"></i>
+                                     </a>
+                                     {% endif %}
+                                 </td>
+                             </tr>
+                             {% endfor %}
+                         </tbody>
+                     </table>
+                 </div>
+                 {% else %}
+                 <div class="text-center py-4">
+                     <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                     <h5 class="text-muted">No recent visitors</h5>
+                     <p class="text-muted">Visitors will appear here once they are registered.</p>
+                 </div>
+                 {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.border-left-primary {
+    border-left: 6px solid #667eea !important;
+}
+.border-left-warning {
+    border-left: 6px solid #f6c23e !important;
+}
+.border-left-success {
+    border-left: 6px solid #1cc88a !important;
+}
+.border-left-info {
+    border-left: 6px solid #36b9cc !important;
+}
+.text-gray-800 {
+    color: #5a5c69 !important;
+}
+.text-gray-300 {
+    color: #dddfeb !important;
+}
+.avatar-sm {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+}
+
+/* Enhanced Statistics Cards */
+.stats-card {
+    min-height: 140px;
+    transition: all 0.3s ease;
+    border-radius: 15px;
+    border: none;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.stats-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+}
+
+.stats-card .card-body {
+    padding: 1.5rem;
+}
+
+.stats-card .h2 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+.stats-card .text-sm {
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+}
+
+.stats-card .fa-3x {
+    font-size: 3.5rem;
+    opacity: 0.8;
+}
+
+/* Card-specific hover effects */
+.border-left-primary:hover {
+    border-left-color: #5a6fd8 !important;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+}
+
+.border-left-warning:hover {
+    border-left-color: #e0a800 !important;
+    background: linear-gradient(135deg, rgba(246, 194, 62, 0.05) 0%, rgba(240, 173, 78, 0.05) 100%);
+}
+
+.border-left-success:hover {
+    border-left-color: #17a673 !important;
+    background: linear-gradient(135deg, rgba(28, 200, 138, 0.05) 0%, rgba(40, 167, 69, 0.05) 100%);
+}
+
+.border-left-info:hover {
+    border-left-color: #2a96a5 !important;
+    background: linear-gradient(135deg, rgba(54, 185, 204, 0.05) 0%, rgba(23, 162, 184, 0.05) 100%);
+}
+</style>
+{% endblock %}

@@ -1,0 +1,517 @@
+{% extends "base.html" %}
+{% block page_title %}Check-in Approval{% endblock %}
+{% block content %}
+    <div id="visitor-details" style="display:none;" class="card p-4 mt-3 shadow-sm">
+        <h3 class="card-title text-center mb-4" style="color: #007bff; font-weight: bold;">Visitor Check-in Details</h3>
+        <div id="printable-id-card" class="id-card-container p-4 mb-3 border rounded shadow" style="max-width: 400px; margin: auto; text-align: center; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border: 2px solid #007bff;">
+            <div style="background-color: #007bff; color: white; padding: 10px; margin: -1rem -1rem 1rem -1rem; border-radius: 0.25rem 0.25rem 0 0;">
+                <h5 class="mb-0" style="font-weight: bold;">VISITOR ID CARD</h5>
+            </div>
+            <div id="visitor-image-container" style="display:none; margin-bottom: 15px;">
+                <img id="visitor-image" src="" alt="Visitor Image" class="rounded-circle shadow" style="width: 140px; height: 140px; object-fit: cover; border: 4px solid #007bff;">
+            </div>
+            <h4 id="visitor-name" class="mb-2" style="color: #343a40; font-weight: bold; font-size: 1.5rem;"></h4>
+            <p id="visitor-mobile" class="mb-1" style="font-size: 1.1rem; color: #495057;"><i class="fas fa-phone"></i> <span></span></p>
+            <p id="visitor-purpose" class="mb-3" style="font-size: 1rem; color: #6c757d; font-style: italic;"></p>
+            <div id="qr-code-container" style="display:none; margin-top: 20px; padding: 15px; background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <img id="qr-code-image" src="" alt="QR Code" style="width: 180px; height: 180px;">
+                <p class="mt-2 mb-0" style="font-weight: bold; color: #007bff; font-size: 1.1rem;">Visitor ID: <span id="visitor-visitor-id"></span></p>
+            </div>
+        </div>
+
+        <!-- Other visitor details hidden - only showing ID card for check-in -->
+        <div class="d-flex justify-content-between mt-3">
+            <div>
+                <button id="cancel-button" class="btn btn-secondary mr-2">Cancel</button>
+                <button id="reject-button" class="btn btn-danger" style="display:none;">Reject Visitor</button>
+            </div>
+            <div>
+                <button id="print-id-card-button" class="btn btn-info mr-2" style="display:none;">Print ID Card</button>
+                <button id="confirm-check-in-button" class="btn btn-success" style="display:none;">Confirm Check-in</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="check-in-button" class="btn btn-success mb-3">Scan QR for Check-in</button>
+    
+    <!-- Manual Test Input for Debugging -->
+    <div class="card mb-3 bg-light">
+        <div class="card-body">
+            <h6 class="mb-2">🔧 Debug: Manual Visitor ID Test</h6>
+            <div class="input-group" style="max-width: 400px;">
+                <input type="text" id="manual-visitor-id" class="form-control" placeholder="Enter Visitor ID to test">
+                <button id="manual-test-button" class="btn btn-primary">Test Lookup</button>
+            </div>
+        </div>
+    </div>
+    
+    <form method="GET" class="form-inline mb-3" id="searchForm">
+        <div class="form-group mx-sm-3 mb-2">
+            <input type="text" class="form-control" id="searchTermInput" name="search_term" placeholder="Search by Name or Visitor ID">
+        </div>
+        <button type="submit" class="btn btn-primary mb-2">Search</button>
+        <button type="button" class="btn btn-secondary mb-2 ml-2" id="clearSearchButton">Clear</button>
+    </form>
+
+    <div id="qr-scanner-container" style="display:none; text-align: center; margin-top: 20px; max-width: 700px; margin-left: auto; margin-right: auto;">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-qrcode me-2"></i>Scan Visitor QR Code</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Instructions:</strong> Position the QR code within the square box. The scanner will automatically detect and read it.
+                </div>
+                <div id="qr-reader" style="width: 100%; margin: 10px auto; border-radius: 10px; overflow: hidden;"></div>
+                <button id="stop-scan-button" class="btn btn-danger mt-3">
+                    <i class="fas fa-stop-circle me-2"></i>Stop Scanning
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="mt-4">Approved Visitors</h3>
+    {% if approved_visitors %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Visitor ID</th>
+                        <th>Unit</th>
+                        <th>Host</th>
+                        <th>Purpose</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for visitor in approved_visitors %}
+                        <tr>
+                            <td>{{ visitor.name }}</td>
+                            <td>{{ visitor.Visitor_ID }}</td>
+                            <td>{{ visitor.unit }}</td>
+                            <td>{{ visitor.host.username }}</td>
+                            <td>{{ visitor.purpose }}</td>
+                            <td>{{ visitor.status }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info view-details-btn" data-visitor-id="{{ visitor.original_visitor_id }}">View Details</button>
+                                <button type="button" class="btn btn-sm btn-success check-in-table-btn" data-visitor-id="{{ visitor.original_visitor_id }}">Check-in</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No approved visitors found.</p>
+    {% endif %}
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.7/html5-qrcode.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+        const visitorDetailsDiv = document.getElementById('visitor-details');
+        const checkInButton = document.getElementById('check-in-button');
+        const cancelButton = document.getElementById('cancel-button');
+        const viewDetailsButtons = document.querySelectorAll('.view-details-btn');
+        const qrScannerContainer = document.getElementById('qr-scanner-container');
+        const stopScanButton = document.getElementById('stop-scan-button');
+        const confirmCheckInButton = document.getElementById('confirm-check-in-button');
+        const rejectButton = document.getElementById('reject-button');
+        const checkInTableButtons = document.querySelectorAll('.check-in-table-btn');
+        const manualTestButton = document.getElementById('manual-test-button');
+        const manualVisitorIdInput = document.getElementById('manual-visitor-id');
+
+        let html5QrCode = null; // To hold the Html5Qrcode scanner instance
+        let currentVisitorId = null; // To store the visitor ID for OK/Cancel actions
+
+        // Ensure initial state is correct
+        visitorDetailsDiv.style.display = 'none';
+        checkInButton.style.display = 'block';
+        cancelButton.style.display = 'none';
+        confirmCheckInButton.style.display = 'none';
+        rejectButton.style.display = 'none';
+        qrScannerContainer.style.display = 'none';
+
+        // Manual test button handler for debugging
+        manualTestButton.addEventListener('click', () => {
+            const testId = manualVisitorIdInput.value.trim();
+            if (testId) {
+                console.log('🧪 MANUAL TEST - Testing with Visitor ID:', testId);
+                fetchVisitorDetailsAndShowActions(testId);
+            } else {
+                alert('Please enter a Visitor ID to test');
+            }
+        });
+
+        // Function to start the QR scanner
+        async function startQrScanner() {
+            console.log("startQrScanner called.");
+            
+            try {
+                qrScannerContainer.style.display = 'block';
+                checkInButton.style.display = 'none';
+                
+                html5QrCode = new Html5Qrcode("qr-reader");
+                
+                // Improved configuration for better scanning
+                const config = {
+                    fps: 10, // Reduced FPS for better stability
+                    qrbox: function(viewfinderWidth, viewfinderHeight) {
+                        // More conservative QR box sizing
+                        let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                        let qrboxSize = Math.floor(minEdge * 0.5); // Reduced from 0.7 to 0.5
+                        return {
+                            width: qrboxSize,
+                            height: qrboxSize
+                        };
+                    },
+                    // Remove aspectRatio to allow better camera compatibility
+                    disableFlip: false, // Allow both orientations
+                    videoConstraints: {
+                        facingMode: { ideal: "environment" }, // Prefer back camera
+                        width: { ideal: 640 }, // Reduced resolution for better performance
+                        height: { ideal: 480 } // Reduced resolution for better performance
+                    },
+                    // Add experimental settings for better performance
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true // Use built-in BarcodeDetector if available
+                    }
+                };
+                
+                await html5QrCode.start(
+                    { facingMode: "environment" }, // Use back camera on mobile
+                    config,
+                    (decodedText, decodedResult) => {
+                        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                        console.log("✅ QR CODE SCAN SUCCESS!");
+                        console.log("📱 Decoded Text:", decodedText);
+                        console.log("📊 Decoded Text Type:", typeof decodedText);
+                        console.log("📏 Decoded Text Length:", decodedText.length);
+                        console.log("🔢 Decoded Text as String:", String(decodedText));
+                        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                        stopQrScanner();
+                        fetchVisitorDetailsAndShowActions(decodedText);
+                    },
+                    (errorMessage) => {
+                        // Scanning error - this is normal, just means no QR code detected yet
+                        // Don't log every frame's error to avoid console spam
+                        // Only log errors that are not "QR code not found" which is expected
+                        if (!errorMessage.includes("QR code not found")) {
+                            console.warn("QR Scanner Warning:", errorMessage);
+                        }
+                    }
+                );
+                
+                console.log("✅ QR Scanner started successfully - Point camera at QR code");
+            } catch (err) {
+                console.error("❌ Error starting QR scanner:", err);
+                let errorMessage = "Error accessing camera. Please ensure you have a camera and have granted permission.";
+                
+                if (err.toString().includes('NotAllowedError')) {
+                    errorMessage = "Camera access denied. Please allow camera permissions in your browser settings and try again.";
+                } else if (err.toString().includes('NotFoundError')) {
+                    errorMessage = "No camera found. Please ensure a camera is connected to your device.";
+                } else if (err.toString().includes('NotReadableError')) {
+                    errorMessage = "Camera is already in use by another application. Please close other applications using the camera.";
+                }
+                
+                alert(errorMessage);
+                qrScannerContainer.style.display = 'none';
+                checkInButton.style.display = 'block';
+            }
+        }
+
+        // Function to stop the QR scanner
+        async function stopQrScanner() {
+            if (html5QrCode) {
+                try {
+                    await html5QrCode.stop();
+                    html5QrCode.clear();
+                    console.log("QR Scanner stopped");
+                } catch (err) {
+                    console.error("Error stopping QR scanner:", err);
+                }
+            }
+            qrScannerContainer.style.display = 'none';
+            checkInButton.style.display = 'block';
+        }
+        
+        // Event listener for stop scan button
+        stopScanButton.addEventListener('click', () => {
+            stopQrScanner();
+        });
+
+        // Function to fetch visitor details and show OK/Cancel buttons
+        async function fetchVisitorDetailsAndShowActions(visitorId) {
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            console.log("🔍 FETCHING VISITOR DETAILS");
+            console.log("📝 Visitor ID Parameter:", visitorId);
+            console.log("📝 Visitor ID Type:", typeof visitorId);
+            console.log("🌐 API URL:", `/vms/get_visitor_details/${visitorId}`);
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+            try {
+                // Add a small delay to allow camera to fully stop before making request
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                const response = await fetch(`/vms/get_visitor_details/${visitorId}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    // Add timeout to prevent hanging requests
+                    signal: AbortSignal.timeout(10000) // 10 second timeout
+                });
+                console.log("📡 Response Status:", response.status);
+                console.log("📡 Response OK:", response.ok);
+                console.log("📡 Response Content-Type:", response.headers.get('content-type'));
+
+                let data;
+                try {
+                    if (response.headers.get('content-type')?.includes('application/json')) {
+                        data = await response.json();
+                        console.log("📦 Response Data:", data);
+                    } else {
+                        const text = await response.text();
+                        console.error("❌ Non-JSON response received:", text);
+                        throw new Error("Non-JSON response received from server.");
+                    }
+                } catch (e) {
+                    console.error("❌ Error parsing response:", e);
+                    alert("Error parsing response from server. Please check the console for details.");
+                    visitorDetailsDiv.style.display = 'none';
+                    document.getElementById('print-id-card-button').style.display = 'none';
+                    return;
+                }
+                
+                if (response.ok && data.success !== false) { // Check for response.ok and explicit success flag
+                    console.log("✅ Visitor found successfully!");
+                    // Populate visitor details for ID card
+                    document.getElementById('visitor-name').innerText = data.name || '';
+                    document.querySelector('#visitor-mobile span').innerText = data.mobile || '';
+                    document.getElementById('visitor-purpose').innerText = data.purpose || '';
+                    document.getElementById('visitor-visitor-id').innerText = data.Visitor_ID || '';
+
+                    // Display visitor image if available
+                    const visitorImage = document.getElementById('visitor-image');
+                    const visitorImageContainer = document.getElementById('visitor-image-container');
+                    if (data.visitor_image) {
+                        // Use the public route for visitor images to avoid authentication issues
+                        visitorImage.src = `/vms/public_visitor_image/${data.Visitor_ID}/photo`;
+                        visitorImageContainer.style.display = 'block';
+                    } else {
+                        visitorImageContainer.style.display = 'none';
+                    }
+                    const qrCodeImage = document.getElementById('qr-code-image');
+                    const qrCodeContainer = document.getElementById('qr-code-container');
+                    if (data.qr_code_url) {
+                        qrCodeImage.src = data.qr_code_url;
+                        qrCodeContainer.style.display = 'block';
+                    } else if (data.Visitor_ID) { // Fallback: construct path if only Visitor_ID is available
+                        // Use the public route for QR codes to avoid authentication issues
+                        qrCodeImage.src = `/vms/public_visitor_image/${data.Visitor_ID}/qr`;
+                        qrCodeContainer.style.display = 'block';
+                    } else {
+                        qrCodeContainer.style.display = 'none';
+                    }
+
+                    // Only showing ID card - other details removed for cleaner check-in experience
+
+                    visitorDetailsDiv.style.display = 'block';
+                    checkInButton.style.display = 'none'; // Hide original check-in button
+                    cancelButton.style.display = 'inline-block'; // Show cancel button
+                    rejectButton.style.display = 'inline-block'; // Show reject button
+                    confirmCheckInButton.style.display = 'inline-block'; // Show confirm check-in button
+                    document.getElementById('print-id-card-button').style.display = 'inline-block'; // Show print button
+
+                    currentVisitorId = visitorId; // Store the visitor ID for actions
+                } else {
+                    console.error("❌ VISITOR NOT FOUND OR ERROR");
+                    console.error("Error Message:", data.message);
+                    alert(data.message || "Error fetching visitor details.");
+                    visitorDetailsDiv.style.display = 'none';
+                    document.getElementById('print-id-card-button').style.display = 'none'; // Hide print button on error
+                }
+            } catch (error) {
+                console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                console.error("❌ EXCEPTION IN FETCH");
+                console.error("Error Type:", error.name);
+                console.error("Error Message:", error.message);
+                console.error("Error Stack:", error.stack);
+                console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                
+                // Handle timeout specifically
+                if (error.name === 'TimeoutError' || error.message.includes('timed out')) {
+                    alert("Request timed out. Please try again.");
+                } else {
+                    alert(`Error fetching visitor details: ${error.message}`);
+                }
+                
+                visitorDetailsDiv.style.display = 'none';
+                document.getElementById('print-id-card-button').style.display = 'none'; // Hide print button on error
+            }
+        }
+
+        // Event listener for the main Check-in button (now "Scan QR for Check-in")
+        checkInButton.addEventListener('click', () => {
+            visitorDetailsDiv.style.display = 'none'; // Hide visitor details if shown
+            startQrScanner(); // Start QR scanner
+        });
+
+        // Event listeners for the table's Check-in buttons
+        checkInTableButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                visitorDetailsDiv.style.display = 'none'; // Hide visitor details if shown
+                stopQrScanner(); // Ensure scanner is stopped if it was somehow active
+                startQrScanner(); // Always start QR scanner
+            });
+        });
+
+        // Event listener for the Confirm Check-in button (now "OK")
+        confirmCheckInButton.addEventListener('click', () => {
+            if (currentVisitorId) {
+                document.getElementById('visitor_id').value = currentVisitorId;
+                document.getElementById('check_in_form').submit();
+            } else {
+                alert("No visitor selected for check-in.");
+            }
+        });
+
+        // Event listener for the Cancel button
+        cancelButton.addEventListener('click', async () => {
+            visitorDetailsDiv.style.display = 'none';
+            stopQrScanner(); // Stop scanner if active
+            confirmCheckInButton.style.display = 'none'; // Hide confirm button
+            rejectButton.style.display = 'none'; // Hide reject button
+            checkInButton.style.display = 'block'; // Show original check-in button
+            cancelButton.style.display = 'none'; // Hide cancel button
+            document.getElementById('print-id-card-button').style.display = 'none'; // Hide print button
+            currentVisitorId = null; // Clear current visitor
+        });
+
+        // Event listener for the Reject button
+        rejectButton.addEventListener('click', async () => {
+            if (currentVisitorId) {
+                const confirmReject = confirm("Are you sure you want to reject this visitor?");
+                if (confirmReject) {
+                    try {
+                        const response = await fetch(`/reject_visitor_by_qrcode/${currentVisitorId}`, { method: 'POST' });
+                        const data = await response.json();
+                        if (response.ok && data.success) {
+                            alert(data.message);
+                            window.location.reload(); // Reload to update the list
+                        } else {
+                            alert(data.message || "Error rejecting visitor.");
+                        }
+                    } catch (error) {
+                        console.error("Error rejecting visitor:", error);
+                        alert("Error rejecting visitor.");
+                    }
+                }
+            } else {
+                alert("No visitor selected for rejection.");
+            }
+        });
+
+        // Event listener for the Print ID Card button
+        document.getElementById('print-id-card-button').addEventListener('click', () => {
+            // Get the current visitor ID from the displayed visitor ID text
+            const visitorId = document.getElementById('visitor-visitor-id').textContent;
+            
+            // Create image sources using the public routes
+            const visitorImageSrc = `/vms/public_visitor_image/${visitorId}/photo`;
+            const qrCodeImageSrc = `/vms/public_visitor_image/${visitorId}/qr`;
+            
+            // Clone the printable content
+            const printableElement = document.getElementById('printable-id-card').cloneNode(true);
+            
+            // Update image sources in the cloned element to ensure they work in the new window
+            const visitorImg = printableElement.querySelector('#visitor-image');
+            const qrCodeImg = printableElement.querySelector('#qr-code-image');
+            
+            if (visitorImg) {
+                visitorImg.src = visitorImageSrc;
+            }
+            
+            if (qrCodeImg) {
+                qrCodeImg.src = qrCodeImageSrc;
+            }
+            
+            const printableContent = printableElement.outerHTML;
+            const printWindow = window.open('', '', 'height=600,width=800');
+            printWindow.document.write('<html><head><title>Visitor ID Card</title>');
+            printWindow.document.write('<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">'); // Include Bootstrap CSS
+            printWindow.document.write('<style>');
+            printWindow.document.write('.id-card-container { border: 1px solid #ccc; padding: 20px; margin: 20px auto; width: 300px; text-align: center; font-family: Arial, sans-serif; }');
+            printWindow.document.write('.id-card-container img { border-radius: 50%; width: 100px; height: 100px; object-fit: cover; margin-bottom: 10px; border: 2px solid #007bff; }');
+            printWindow.document.write('.id-card-container h4 { margin-bottom: 5px; color: #343a40; }');
+            printWindow.document.write('.id-card-container p { margin-bottom: 3px; font-size: 0.9em; color: #6c757d; }');
+            printWindow.document.write('.id-card-container #qr-code-image { width: 120px; height: 120px; margin-top: 15px; }');
+            printWindow.document.write('</style>');
+            printWindow.document.write('</head><body>');
+            printWindow.document.write(printableContent);
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            
+            // Wait for images to load before printing
+            let imagesLoaded = 0;
+            const totalImages = printableElement.querySelectorAll('img').length;
+            
+            if (totalImages === 0) {
+                printWindow.print();
+                return;
+            }
+            
+            printableElement.querySelectorAll('img').forEach(img => {
+                if (img.complete) {
+                    imagesLoaded++;
+                    if (imagesLoaded === totalImages) {
+                        printWindow.print();
+                    }
+                } else {
+                    img.onload = () => {
+                        imagesLoaded++;
+                        if (imagesLoaded === totalImages) {
+                            printWindow.print();
+                        }
+                    };
+                    img.onerror = () => {
+                        imagesLoaded++;
+                        if (imagesLoaded === totalImages) {
+                            printWindow.print();
+                        }
+                    };
+                }
+            });
+        });
+
+        viewDetailsButtons.forEach(button => {
+            button.addEventListener('click', (event) => {
+                const visitorId = event.target.dataset.visitorId;
+                fetchVisitorDetailsAndShowActions(visitorId);
+                stopQrScanner(); // Stop scanner if active when viewing details
+            });
+        });
+
+        // Function to clear search fields and reload the page
+        function clearSearch() {
+            document.getElementById('searchTermInput').value = '';
+            const url = new URL(window.location.href);
+            url.search = ''; // Clear all search parameters
+            window.location.href = url.toString(); // Navigate to the clean URL
+        }
+
+        // Event listener for the Clear Search button
+        const clearSearchButton = document.getElementById('clearSearchButton');
+        if (clearSearchButton) {
+            clearSearchButton.addEventListener('click', clearSearch);
+        }
+    });
+    </script>
+    <form id="check_in_form" method="post" action="{{ url_for('check_in_approval') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" id="visitor_id" name="visitor_id">
+    </form>
+{% endblock %}

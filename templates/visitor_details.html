@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+
+{% block title %}Visitor Details - {{ visitor.name }}{% endblock %}
+{% block page_title %}Visitor Details{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 offset-lg-1">
+        <!-- Back and Print Buttons -->
+        <div class="mb-3 d-flex justify-content-between align-items-center">
+            <a href="{{ url_for('visitor_status') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Visitor Status
+            </a>
+            <button onclick="printVisitorReport()" class="btn btn-primary">
+                <i class="fas fa-print me-2"></i>Print Report
+            </button>
+        </div>
+
+        <!-- Main Card -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="fas fa-user-circle me-2"></i>Visitor Details</h4>
+            </div>
+            <div class="card-body">
+                <!-- Visitor Profile Section -->
+                <div class="row mb-3">
+                    <div class="col-md-3 text-center">
+                        {% if visitor.visitor_image %}
+                            <img src="/vms/uploads/{{ visitor.visitor_image }}" alt="Visitor Photo" class="visitor-photo-id-card mb-3">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='default_avatar.png') }}" alt="Default Avatar" class="visitor-photo-id-card mb-3">
+                        {% endif %}
+                        <div class="mt-3">
+                            {% if qr_code_url %}
+                                <img src="{{ qr_code_url }}" alt="QR Code" class="img-thumbnail" style="max-width: 150px;">
+                                <p class="text-muted small mt-2">Scan QR Code</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-9">
+                        <h3 class="mb-3">{{ visitor.name }}</h3>
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
+                                <div class="info-item">
+                                    <label class="info-label"><i class="fas fa-id-card me-2"></i>Visitor ID</label>
+                                    <div class="info-value">{{ visitor.Visitor_ID }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <div class="info-item">
+                                    <label class="info-label"><i class="fas fa-info-circle me-2"></i>Status</label>
+                                    <div class="info-value">
+                                        <span class="badge status-badge status-{{ visitor.status.lower() }}">{{ visitor.status.upper() }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <div class="info-item">
+                                    <label class="info-label"><i class="fas fa-phone-alt me-2"></i>Mobile</label>
+                                    <div class="info-value">{{ visitor.mobile }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <div class="info-item">
+                                    <label class="info-label"><i class="fas fa-envelope me-2"></i>Email</label>
+                                    <div class="info-value">{{ visitor.email or 'N/A' }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <div class="info-item">
+                                    <label class="info-label"><i class="fas fa-building me-2"></i>Company</label>
+                                    <div class="info-value">{{ visitor.company or 'N/A' }}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <div class="info-item">
+                                    <label class="info-label"><i class="fas fa-user-tag me-2"></i>Visitor Type</label>
+                                    <div class="info-value">{{ visitor.visitor_type or 'N/A' }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="section-divider">
+
+                <!-- Visit Information Section -->
+                <h5 class="section-title"><i class="fas fa-clipboard-check me-2"></i>Visit Information</h5>
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-bullseye me-2"></i>Purpose of Visit</label>
+                            <div class="info-value">{{ visitor.purpose }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-map-marker-alt me-2"></i>Visit Location</label>
+                            <div class="info-value">{{ visitor.visit_location or 'N/A' }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-user-tie me-2"></i>Host</label>
+                            <div class="info-value">
+                                {% if visitor.host %}
+                                    {{ visitor.host.username }}{% if visitor.host.department %} ({{ visitor.host.department }}){% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-users me-2"></i>Access Group</label>
+                            <div class="info-value">{{ visitor.access_group_name or 'N/A' }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-user-plus me-2"></i>Registered By</label>
+                            <div class="info-value">
+                                {% if visitor.created_by_user %}
+                                    {{ visitor.created_by_user.username }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="section-divider">
+
+                <!-- Time Tracking Section -->
+                <h5 class="section-title"><i class="fas fa-clock me-2"></i>Time Tracking</h5>
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-sign-in-alt me-2"></i>Check-in Time</label>
+                            <div class="info-value">
+                                {% if visitor.check_in_time %}
+                                    {{ visitor.check_in_time.strftime('%d %b %Y, %I:%M %p') }}
+                                {% elif visitor.status == 'pending' %}
+                                    <span class="text-warning">Waiting for approval</span>
+                                {% else %}
+                                    <span class="text-muted">Not checked in</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-sign-out-alt me-2"></i>Check-out Time</label>
+                            <div class="info-value">
+                                {% if visitor.check_out_time %}
+                                    {{ visitor.check_out_time.strftime('%d %b %Y, %I:%M %p') }}
+                                {% else %}
+                                    <span class="text-muted">Pending</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="section-divider">
+
+                <!-- ID Proof Section -->
+                <h5 class="section-title"><i class="fas fa-id-badge me-2"></i>Identification Details</h5>
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-file-alt me-2"></i>ID Proof Type</label>
+                            <div class="info-value">
+                                {% if visitor.id_proof_type == 'Others' and visitor.other_id_proof_type %}
+                                    {{ visitor.other_id_proof_type }}
+                                {% elif visitor.id_proof_type %}
+                                    {{ visitor.id_proof_type }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-image me-2"></i>ID Proof Document</label>
+                            <div class="info-value">
+                                <a href="{{ url_for('uploaded_file', filename=visitor.id_proof_path) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>View Document
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if visitor.materials %}
+                <hr class="section-divider">
+                <h5 class="section-title"><i class="fas fa-box-open me-2"></i>Material Details</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="10%">SI.No</th>
+                                <th width="25%">Material Name</th>
+                                <th width="20%">Type</th>
+                                <th width="20%">Make</th>
+                                <th width="25%">Serial Number</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for material in visitor.materials %}
+                            <tr>
+                                <td class="text-center">{{ loop.index }}</td>
+                                <td>{{ material.name }}</td>
+                                <td>{{ material.type or 'N/A' }}</td>
+                                <td>{{ material.make or 'N/A' }}</td>
+                                <td>{{ material.serial_number or 'N/A' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <hr class="section-divider">
+                <h5 class="section-title"><i class="fas fa-box-open me-2"></i>Material Details</h5>
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>No material details available for this visit.
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    /* Status Badges */
+    .status-badge {
+        font-size: 0.875rem;
+        padding: 0.5em 1em;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+    .status-pending { 
+        background-color: #ffc107; 
+        color: #212529; 
+    }
+    .status-approved { 
+        background-color: #28a745; 
+        color: #fff;
+    }
+    .status-rejected { 
+        background-color: #dc3545; 
+        color: #fff;
+    }
+    .status-exited { 
+        background-color: #6c757d; 
+        color: #fff;
+    }
+    .status-checked-in { 
+        background-color: #17a2b8; 
+        color: #fff;
+    }
+    
+    /* Visitor Photo */
+    .visitor-photo-id-card {
+        width: 150px;
+        height: 150px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid #007bff;
+        box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+        margin: 0 auto;
+        display: block;
+    }
+    
+    /* Card Styling */
+    .card {
+        border-radius: 12px;
+        border: none;
+    }
+    .card-header {
+        border-radius: 12px 12px 0 0 !important;
+        padding: 1.25rem 1.5rem;
+    }
+    .card-body {
+        padding: 1.5rem;
+    }
+    
+    /* Section Titles */
+    .section-title {
+        color: #2c3e50;
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #007bff;
+    }
+    
+    /* Section Divider */
+    .section-divider {
+        margin: 1.25rem 0;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    /* Info Items */
+    .info-item {
+        margin-bottom: 0;
+    }
+    .info-label {
+        font-weight: 600;
+        color: #6c757d;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+        display: block;
+    }
+    .info-value {
+        font-size: 0.95rem;
+        color: #212529;
+        padding: 0.25rem 0;
+    }
+    
+    /* QR Code & Images */
+    .img-thumbnail {
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 0.5rem;
+        background-color: #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Table Styling */
+    .table-hover tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    .table thead th {
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+        color: #495057;
+    }
+    
+    /* Alerts */
+    .alert-info {
+        border-left: 4px solid #17a2b8;
+        background-color: #e7f6fd;
+        border-color: #bee5eb;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .visitor-photo-id-card {
+            width: 120px;
+            height: 120px;
+        }
+        .card-body {
+            padding: 1rem;
+        }
+        .section-title {
+            font-size: 1rem;
+        }
+    }
+
+    /* Print Styles */
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        .card, .card * {
+            visibility: visible;
+        }
+        .card {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            box-shadow: none;
+            border: 1px solid #000;
+        }
+        .btn, button, a.btn {
+            display: none !important;
+        }
+        .card-header {
+            background-color: #007bff !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .section-title {
+            border-bottom: 2px solid #000 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .status-badge {
+            border: 1px solid #000;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .visitor-photo-id-card, .img-thumbnail {
+            border: 2px solid #000 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table {
+            border: 1px solid #000;
+        }
+        .table th, .table td {
+            border: 1px solid #000 !important;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+    }
+</style>
+
+<script>
+function printVisitorReport() {
+    // Add a print-friendly title
+    const originalTitle = document.title;
+    document.title = 'Visitor Report - {{ visitor.name }} ({{ visitor.Visitor_ID }})';
+    
+    // Trigger print
+    window.print();
+    
+    // Restore original title
+    document.title = originalTitle;
+}
+</script>
+{% endblock %}

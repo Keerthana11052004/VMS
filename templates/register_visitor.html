@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}Register Visitor - VMS Pro{% endblock %}
+{% block page_title %}Register Visitor{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Visitor Registration Form</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <h5 class="mt-4 mb-3"><i class="fas fa-user-circle me-2"></i>Visitor Details</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">Visitor Name *</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="mobile" class="form-label">Mobile Number *</label>
+                            <input type="text" class="form-control" id="mobile" name="mobile" required maxlength="10" pattern="[0-9]{10}" title="Mobile number must be 10 digits" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="email" name="email">
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="host_id" class="form-label">Person to Meet *</label>
+                            <select class="form-select" id="host_id" name="host_id" required style="width: 100%;">
+                                <option value="">Select Employee</option>
+                                {% for employee in employees %}
+                                <option value="{{ employee.id }}">{{ employee.username }} - {{ employee.department }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="visitor_type" class="form-label">Visitor Type</label>
+                            <select class="form-select" id="visitor_type" name="visitor_type">
+                                <option value="General">General</option>
+                                <option value="Personal">Personal</option>
+                                <option value="Official">Official</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="company" class="form-label">Company</label>
+                            <input type="text" class="form-control" id="company" name="company">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="access_group_name" class="form-label">Access Group Name</label>
+                            <input type="text" class="form-control" id="access_group_name" name="access_group_name">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="Visitor_ID" class="form-label">Visitor ID</label>
+                        <input type="text" class="form-control" id="Visitor_ID" name="Visitor_ID" value="{{ generated_visitor_id }}" readonly>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                            <label for="visit_location" class="form-label">Visit Location *</label>
+                            <select class="form-select" id="visit_location" name="visit_location" required>
+                                <option value="">Select Location</option>
+                                <option value="Unit-1">Unit-1</option>
+                                <option value="Unit-2">Unit-2</option>
+                                <option value="Unit-3">Unit-3</option>
+                                <option value="Unit-4">Unit-4</option>
+                                <option value="Unit-5">Unit-5</option>
+                                <option value="GSS">GSS</option>
+                            </select>
+                        </div>
+                         <div class="mb-3">
+                        <label for="purpose" class="form-label">Purpose of Visit *</label>
+                        <textarea class="form-control" id="purpose" name="purpose" rows="3" required
+                                   placeholder="Please describe the purpose of visit..."></textarea>
+                    </div>
+  
+                     <div class="col-md-6 mb-3">
+                        <label for="id_proof_type" class="form-label">Type of ID Proof (Optional)</label>
+                        <select class="form-select" id="id_proof_type" name="id_proof_type">
+                            <option value="">Select ID Proof Type</option>
+                            <option value="Aadhar">Aadhar</option>
+                            <option value="Pan">Pan</option>
+                            <option value="Business Card">Business Card</option>
+                            <option value="Driving License">Driving License</option>
+                            <option value="Passport">Passport</option>
+                            <option value="Company ID">Company ID</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3" id="other_id_proof_type_div" style="display: none;">
+                        <label for="other_id_proof_type" class="form-label">Other ID Proof Type</label>
+                        <input type="text" class="form-control" id="other_id_proof_type" name="other_id_proof_type">
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_proof" class="form-label">ID Proof (Optional)</label>
+                        <input type="file" class="form-control" id="id_proof" name="id_proof"
+                                 accept="image/*,.pdf,.doc,.docx">
+                        <div class="form-text">Accepted formats: Images, PDF, DOC, DOCX (Max 16MB)</div>
+                    </div>
+
+                     <div class="mb-3">
+                        <label class="form-label">Visitor Photo (Optional)</label>
+                        <div class="border p-2 rounded mb-2">
+                            <video id="cameraFeed" width="100%" height="240" autoplay style="background-color: #eee;"></video>
+                            <canvas id="cameraCanvas" width="320" height="240" style="display: none;"></canvas>
+                            <div class="d-flex justify-content-center mt-2">
+                                <button type="button" id="startCameraButton" class="btn btn-info btn-sm me-2">
+                                    <i class="fas fa-camera me-1"></i>Start Camera
+                                </button>
+                                <button type="button" id="captureButton" class="btn btn-primary btn-sm" disabled>
+                                    <i class="fas fa-camera-retro me-1"></i>Capture Photo
+                                </button>
+                            </div>
+                            <input type="hidden" id="visitorPhoto" name="visitor_photo">
+                        </div>
+                        <div class="form-text">Capture a photo of the visitor using the camera.</div>
+                    </div>
+                    
+                    <div class="p-4 border rounded mb-4">
+                        <h5 class="mt-0 mb-3 d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-box me-2"></i>Material Details</span>
+                            <button type="button" class="btn btn-success btn-sm" id="addMaterialBtn">
+                                <i class="fas fa-plus me-1"></i>Add Material
+                            </button>
+                        </h5>
+                        <div id="materialDetailsContainer">
+                            <!-- Material details will be added here by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> A QR code will be automatically generated for this visitor.
+                        The visitor will need to show this QR code at the exit gate.
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary me-md-2">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary me-md-4">
+                            <i class="fas fa-save me-2"></i>Register Visitor
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Wait for DOM to be fully loaded before running scripts
+document.addEventListener('DOMContentLoaded', function() {
+    // Form validation
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const mobile = document.getElementById('mobile').value;
+        const email = document.getElementById('email').value;
+        
+        // Mobile number validation
+        if (!/^\d{10}$/.test(mobile.replace(/\s/g, ''))) {
+            e.preventDefault();
+            alert('Please enter a valid mobile number (exactly 10 digits)');
+            return false;
+        }
+        
+        // Email validation (if provided)
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            e.preventDefault();
+            alert('Please enter a valid email address');
+            return false;
+        }
+    });
+
+    // File size validation
+    document.getElementById('id_proof').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const maxSize = 16 * 1024 * 1024; // 16MB
+            if (file.size > maxSize) {
+                alert('File size must be less than 16MB');
+                this.value = '';
+            }
+        }
+    });
+
+    // Handle "Others" ID Proof Type visibility
+    const idProofTypeDropdown = document.getElementById('id_proof_type');
+    const otherIdProofTypeDiv = document.getElementById('other_id_proof_type_div');
+
+    idProofTypeDropdown.addEventListener('change', function() {
+        if (this.value === 'Others') {
+            otherIdProofTypeDiv.style.display = 'block';
+        } else {
+            otherIdProofTypeDiv.style.display = 'none';
+        }
+    });
+
+    // Camera capture functionality
+    const cameraFeed = document.getElementById('cameraFeed');
+    const cameraCanvas = document.getElementById('cameraCanvas');
+    const captureButton = document.getElementById('captureButton');
+    const startCameraButton = document.getElementById('startCameraButton');
+    const visitorPhotoInput = document.getElementById('visitorPhoto');
+    const context = cameraCanvas.getContext('2d');
+    let stream;
+
+    startCameraButton.addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            cameraFeed.srcObject = stream;
+            cameraFeed.style.display = 'block';
+            cameraCanvas.style.display = 'none';
+            captureButton.disabled = false;
+            startCameraButton.textContent = 'Camera On';
+            startCameraButton.disabled = true;
+        } catch (err) {
+            console.error("Error accessing camera: ", err);
+            alert("Could not access camera. Please ensure it's connected and permissions are granted.");
+        }
+    });
+
+    captureButton.addEventListener('click', () => {
+        if (stream) {
+            context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+            const imageDataURL = cameraCanvas.toDataURL('image/png');
+            visitorPhotoInput.value = imageDataURL;
+            cameraFeed.style.display = 'none';
+            cameraCanvas.style.display = 'block';
+            captureButton.disabled = true;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            startCameraButton.textContent = 'Start Camera';
+            startCameraButton.disabled = false;
+        } else {
+            alert("Please start the camera first.");
+        }
+    });
+
+    // New JavaScript for Material Details
+    const addMaterialBtn = document.getElementById('addMaterialBtn');
+    const materialDetailsContainer = document.getElementById('materialDetailsContainer');
+    let materialCount = 0;
+
+    function addMaterialField() {
+        materialCount++;
+        const materialDiv = document.createElement('div');
+        materialDiv.classList.add('material-item', 'border', 'p-3', 'rounded', 'mb-3');
+        materialDiv.setAttribute('data-material-id', materialCount);
+        materialDiv.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0">Material #${materialCount}</h6>
+                <button type="button" class="btn btn-danger btn-sm remove-material-btn">
+                    <i class="fas fa-trash me-1"></i>Remove
+                </button>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="material_name_${materialCount}" class="form-label">Material Name</label>
+                    <input type="text" class="form-control" id="material_name_${materialCount}" name="material_name[]">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="material_type_${materialCount}" class="form-label">Material Type</label>
+                    <input type="text" class="form-control" id="material_type_${materialCount}" name="material_type[]">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="material_make_${materialCount}" class="form-label">Material Make</label>
+                    <input type="text" class="form-control" id="material_make_${materialCount}" name="material_make[]">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="material_serial_number_${materialCount}" class="form-label">Material Serial Number</label>
+                    <input type="text" class="form-control" id="material_serial_number_${materialCount}" name="material_serial_number[]">
+                </div>
+            </div>
+        `;
+        materialDetailsContainer.appendChild(materialDiv);
+
+        // Add event listener for the new remove button
+        materialDiv.querySelector('.remove-material-btn').addEventListener('click', function() {
+            materialDiv.remove();
+            updateMaterialNumbers();
+        });
+    }
+
+    function updateMaterialNumbers() {
+        const materialItems = materialDetailsContainer.querySelectorAll('.material-item');
+        materialItems.forEach((item, index) => {
+            const newCount = index + 1;
+            item.setAttribute('data-material-id', newCount);
+            item.querySelector('h6').textContent = `Material #${newCount}`;
+            // Update input field IDs and names
+            item.querySelector(`[id^="material_name_"]`).id = `material_name_${newCount}`;
+            item.querySelector(`[name^="material_name"]`).name = `material_name[]`;
+            item.querySelector(`[id^="material_type_"]`).id = `material_type_${newCount}`;
+            item.querySelector(`[name^="material_type"]`).name = `material_type[]`;
+            item.querySelector(`[id^="material_make_"]`).id = `material_make_${newCount}`;
+            item.querySelector(`[name^="material_make"]`).name = `material_make[]`;
+            item.querySelector(`[id^="material_serial_number_"]`).id = `material_serial_number_${newCount}`;
+            item.querySelector(`[name^="material_serial_number"]`).name = `material_serial_number[]`;
+        });
+        materialCount = materialItems.length; // Reset materialCount to the actual number of items
+    }
+
+    addMaterialBtn.addEventListener('click', addMaterialField);
+
+    // Add one material field by default when the page loads
+    addMaterialField();
+
+    // Initialize Select2 for the host_id dropdown (after jQuery is loaded)
+    if (typeof $ !== 'undefined') {
+        $('#host_id').select2({
+            placeholder: "Select Employee",
+            allowClear: true,
+            dropdownParent: $('#host_id').parent()
+        });
+    }
+});
+</script>
+{% endblock %}

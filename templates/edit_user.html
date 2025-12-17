@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Edit User{% endblock %}
+
+{% block page_title %}Edit User{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Edit User Details</h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="employee_id" class="form-label">Employee ID</label>
+                <input type="text" class="form-control" id="employee_id" name="employee_id" value="{{ user.employee_id }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">New Password (leave blank to keep current)</label>
+                <input type="password" class="form-control" id="password" name="password">
+            </div>
+            <div class="mb-3">
+                <label for="role" class="form-label">Role</label>
+                <select class="form-control" id="role" name="role" required>
+                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                    <option value="security" {% if user.role == 'security' %}selected{% endif %}>Security</option>
+                    <option value="employee" {% if user.role == 'employee' %}selected{% endif %}>Employee</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="department" class="form-label">Department (Optional)</label>
+                <input type="text" class="form-control" id="department" name="department" value="{{ user.department or '' }}">
+            </div>
+            <div class="mb-3">
+                <label for="unit" class="form-label">Unit (Optional)</label>
+                <select class="form-control" id="unit" name="unit">
+                    <option value="">Select Unit</option>
+                    <option value="Unit-1" {% if user.unit == 'Unit-1' %}selected{% endif %}>Unit-1</option>
+                    <option value="Unit-2" {% if user.unit == 'Unit-2' %}selected{% endif %}>Unit-2</option>
+                    <option value="Unit-3" {% if user.unit == 'Unit-3' %}selected{% endif %}>Unit-3</option>
+                    <option value="Unit-4" {% if user.unit == 'Unit-4' %}selected{% endif %}>Unit-4</option>
+                    <option value="Unit-5" {% if user.unit == 'Unit-5' %}selected{% endif %}>Unit-5</option>
+                    <option value="GSS" {% if user.unit == 'GSS' %}selected{% endif %}>GSS</option>
+                    <option value="All Unit" {% if user.unit == 'All Unit' %}selected{% endif %}>All Unit</option>
+                </select>
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Is Active</label>
+            </div>
+            <button type="submit" class="btn btn-primary">Update User</button>
+            <a href="{{ url_for('user_management') }}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

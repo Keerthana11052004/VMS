@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - VMS Pro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            <i class="fas fa-tachometer-alt me-2"></i>
+            Administrator Dashboard
+        </h1>
+        <div class="d-flex">
+            <span class="badge bg-primary fs-6 px-3 py-2">
+                <i class="fas fa-user-shield me-1"></i>
+                Administrator
+            </span>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row">
+        <!-- Total Users -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-4 stats-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-sm font-weight-bold text-primary text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                                Total Users</div>
+                            <div class="h2 mb-0 font-weight-bold text-gray-800">{{ total_users }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-3x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Visitors -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-4 stats-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-sm font-weight-bold text-success text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                                Total Visitors</div>
+                            <div class="h2 mb-0 font-weight-bold text-gray-800">{{ total_visitors }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-user-friends fa-3x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Today's Visitors -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-4 stats-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-sm font-weight-bold text-info text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                                Today's Visitors</div>
+                            <div class="h2 mb-0 font-weight-bold text-gray-800">{{ today_visitors }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar-day fa-3x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Approvals -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-4 stats-card">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-sm font-weight-bold text-warning text-uppercase mb-2"style="font-weight: bold;font-size: 1.0rem;">
+                                Pending Approvals</div>
+                            <div class="h2 mb-0 font-weight-bold text-gray-800">{{ pending_approvals }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clock fa-3x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-bolt me-2"></i>
+                        Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('register_visitor') }}" class="btn btn-primary w-100">
+                                <i class="fas fa-user-plus me-2"></i>
+                                Register Visitor
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('approval_dashboard') }}" class="btn btn-warning w-100">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Approve Visitors
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('user_management') }}" class="btn btn-success w-100">
+                                <i class="fas fa-users me-2"></i>
+                                Manage Users
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            {% if current_user.role in ['admin', 'security'] %}
+                            <a href="{{ url_for('visitor_status') }}" class="btn btn-info w-100">
+                                <i class="fas fa-chart-bar me-2"></i>
+                                View Reports
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <!-- Visitor Status Overview -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Visitor Status Overview
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 text-center">
+                            <div class="border rounded p-3 bg-success bg-opacity-10">
+                                <h4 class="text-success">{{ approved_visitors_count }}</h4>
+                                <p class="mb-0 text-muted">Approved</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="border rounded p-3 bg-warning bg-opacity-10">
+                                <h4 class="text-warning">{{ pending_approvals }}</h4>
+                                <p class="mb-0 text-muted">Pending</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="border rounded p-3 bg-danger bg-opacity-10">
+                                <h4 class="text-danger">{{ rejected_visitors_count }}</h4>
+                                <p class="mb-0 text-muted">Rejected</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="border rounded p-3 bg-info bg-opacity-10">
+                                <h4 class="text-info">{{ exited_visitors_count }}</h4>
+                                <p class="mb-0 text-muted">Exited</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activities -->
+    <div class="row">
+        <!-- Recent Visitors -->
+        <div class="col-lg-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-history me-2"></i>
+                        Recent Visitors (Today)
+                    </h6>
+                    <a href="{{ url_for('visitor_status') }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-eye me-1"></i>
+                        View All
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Host</th>
+                                    <th>Status</th>
+                                    <th>Check-in/out Time</th>
+                                    <th>Total Hours Visited</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for visitor in recent_visitors %}
+                                <tr>
+                                    <td>{{ visitor.name }}</td>
+                                    <td>{{ visitor.host.username }}</td>
+                                    <td>
+                                        {% if visitor.status == 'pending' %}
+                                            <span class="badge bg-warning">Pending</span>
+                                        {% elif visitor.status == 'approved' %}
+                                            <span class="badge bg-success">Approved</span>
+                                        {% elif visitor.status == 'checked-in' %}
+                                            <span class="badge bg-primary">Checked-in</span>
+                                        {% elif visitor.status == 'rejected' %}
+                                            <span class="badge bg-danger">Rejected</span>
+                                        {% elif visitor.status == 'exited' %}
+                                            <span class="badge bg-info">Exited</span>
+                                        {% endif %}
+                                    </td>
+                                 <td>
+                                     {% if visitor.status == 'pending' %}
+                                         Waiting for approval
+                                     {% elif visitor.status == 'approved' %}
+                                         Approved At: {{ visitor.approved_at.strftime('%Y-%m-%d %H:%M:%S') if visitor.approved_at else 'N/A' }}
+                                     {% elif visitor.status == 'checked-in' %}
+                                         Check-in Time: {{ visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A' }}
+                                     {% elif visitor.status == 'exited' %}
+                                         Check-in Time: {{ visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A' }}<br>
+                                         Check-out Time: {{ visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_out_time else 'N/A' }}
+                                     {% else %}
+                                         N/A
+                                     {% endif %}
+                                 </td>
+                                 <td>{{ visitor.total_hours_visited }}</td>
+                                 <td>
+                                     <a href="{{ url_for('visitor_status') }}" class="btn btn-sm btn-outline-primary">
+                                         <i class="fas fa-eye"></i>
+                                     </a>
+                                 </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+/* Enhanced Statistics Cards */
+.stats-card {
+    min-height: 140px;
+    transition: all 0.3s ease;
+    border-radius: 15px;
+    border: none;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.stats-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+}
+
+.stats-card .card-body {
+    padding: 1.5rem;
+}
+
+.stats-card .h2 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+.stats-card .text-sm {
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+}
+
+.stats-card .fa-3x {
+    font-size: 3.5rem;
+    opacity: 0.8;
+}
+
+/* Card-specific hover effects */
+.border-left-primary:hover {
+    border-left-color: #5a6fd8 !important;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+}
+
+.border-left-success:hover {
+    border-left-color: #17a673 !important;
+    background: linear-gradient(135deg, rgba(28, 200, 138, 0.05) 0%, rgba(40, 167, 69, 0.05) 100%);
+}
+
+.border-left-info:hover {
+    border-left-color: #2a96a5 !important;
+    background: linear-gradient(135deg, rgba(54, 185, 204, 0.05) 0%, rgba(23, 162, 184, 0.05) 100%);
+}
+
+.border-left-warning:hover {
+    border-left-color: #e0a800 !important;
+    background: linear-gradient(135deg, rgba(246, 194, 62, 0.05) 0%, rgba(240, 173, 78, 0.05) 100%);
+}
+
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+    font-weight: 600;
+}
+</style>
+{% endblock %}

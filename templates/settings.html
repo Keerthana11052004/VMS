@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}System Settings{% endblock %}
+
+{% block page_title %}System Settings{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">General Settings</h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('settings') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="company_name" class="form-label">Company Name</label>
+                <input type="text" class="form-control" id="company_name" name="company_name" value="{{ settings.company_name }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="system_title" class="form-label">System Title</label>
+                <input type="text" class="form-control" id="system_title" name="system_title" value="{{ settings.system_title }}" required>
+            </div>
+
+            <h6 class="mt-4 mb-3 font-weight-bold text-primary">Email Settings</h6>
+            <div class="mb-3">
+                <label for="mail_server" class="form-label">Mail Server</label>
+                <input type="text" class="form-control" id="mail_server" name="mail_server" value="{{ settings.MAIL_SERVER }}">
+            </div>
+            <div class="mb-3">
+                <label for="mail_port" class="form-label">Mail Port</label>
+                <input type="number" class="form-control" id="mail_port" name="mail_port" value="{{ settings.MAIL_PORT }}">
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="mail_use_tls" name="mail_use_tls" {% if settings.MAIL_USE_TLS %}checked{% endif %}>
+                <label class="form-check-label" for="mail_use_tls">Use TLS</label>
+            </div>
+            <div class="mb-3">
+                <label for="mail_username" class="form-label">Mail Username</label>
+                <input type="text" class="form-control" id="mail_username" name="mail_username" value="{{ settings.MAIL_USERNAME }}">
+            </div>
+            <div class="mb-3">
+                <label for="mail_password" class="form-label">Mail Password</label>
+                <input type="password" class="form-control" id="mail_password" name="mail_password" value="{{ settings.MAIL_PASSWORD }}">
+            </div>
+            <div class="mb-3">
+                <label for="mail_default_sender" class="form-label">Default Sender Email</label>
+                <input type="email" class="form-control" id="mail_default_sender" name="mail_default_sender" value="{{ settings.MAIL_DEFAULT_SENDER }}">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
