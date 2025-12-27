@@ -90,6 +90,7 @@ def init_database():
                 {"username": "admin", "email": "admin@vms.com", "password": "admin123", "role": "admin", "name": "System Administrator", "department": "IT", "employee_id": "admin123"},
                 {"username": "employee", "email": "employee@vms.com", "password": "employee123", "role": "employee", "name": "John Doe", "department": "Sales", "employee_id": "emp123"},
                 {"username": "security", "email": "security@vms.com", "password": "security123", "role": "security", "name": "Security Guard", "department": "Security", "employee_id": "sec123"},
+                {"username": "keerthana", "email": "keerthana.u@violintec.com", "password": "Keerthu@123", "role": "admin", "name": "Keerthana U", "department": "IT", "employee_id": "VTPL1028"},
             ]
 
             for u in defaults:
