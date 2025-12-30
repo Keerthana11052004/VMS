@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}{{ system_title }}{% endblock %}</title>
+    <title>Visitor Management System</title>
     <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='vendor/select2/css/select2.min.css') }}" rel="stylesheet" />
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <style>
         .sidebar {
             position: fixed;
@@ -16,6 +17,8 @@
             z-index: 1000; /* Ensure it's above other content */
             min-height: 100vh;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 250px; /* Fixed width for sidebar */
+            overflow-y: auto; /* Enable vertical scrolling */
         }
         .sidebar .nav-link {
             color: rgba(255,255,255,0.8);
@@ -132,7 +135,7 @@
                     <div class="text-center mb-4">
                         <img src="{{ url_for('static', filename='logo.png') }}" alt="Company Logo" style="width: 80px; height: 80px; border-radius: 50%; object-fit: contain; margin: 0 auto 10px auto; display: block; background-color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.2); padding: 5px;">
                         <h5 class="text-white sidebar-company-name">{{ company_name }}</h5>
-                        <p class="text-white-50 sidebar-system-title mb-0">{{ system_title }}</p>
+                        <p class="text-white-50 sidebar-system-title mb-0">Visitor Management System</p>
                     </div>
 
                     {% if current_user.is_authenticated %}
@@ -212,7 +215,7 @@
             </nav>
             
             <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content" style="margin-left: calc(25% + 1.5rem);">
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content" style="margin-left: 250px;">
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                     <h1 class="h2">{% block page_title %}{% endblock %}</h1>
                 </div>

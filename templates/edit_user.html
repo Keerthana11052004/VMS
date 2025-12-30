@@ -57,6 +57,10 @@
                 <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
                 <label class="form-check-label" for="is_active">Is Active</label>
             </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="is_hod" name="is_hod" {% if user.is_hod %}checked{% endif %}>
+                <label class="form-check-label" for="is_hod">HOD (Head of Department)</label>
+            </div>
             <button type="submit" class="btn btn-primary">Update User</button>
             <a href="{{ url_for('user_management') }}" class="btn btn-secondary">Cancel</a>
         </form>

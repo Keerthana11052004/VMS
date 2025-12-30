@@ -83,31 +83,59 @@ def init_database():
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
+            # Drop all existing tables to ensure the new schema is applied
+            db.drop_all()
+            print("✅ All database tables dropped successfully!")
+            
+            # Create all tables with the new schema
             db.create_all()
-            print("✅ Database tables created successfully!")
+            print("✅ Database tables created successfully with updated schema!")
 
-            defaults = [
-                {"username": "admin", "email": "admin@vms.com", "password": "admin123", "role": "admin", "name": "System Administrator", "department": "IT", "employee_id": "admin123"},
-                {"username": "employee", "email": "employee@vms.com", "password": "employee123", "role": "employee", "name": "John Doe", "department": "Sales", "employee_id": "emp123"},
-                {"username": "security", "email": "security@vms.com", "password": "security123", "role": "security", "name": "Security Guard", "department": "Security", "employee_id": "sec123"},
-                {"username": "keerthana", "email": "keerthana.u@violintec.com", "password": "Keerthu@123", "role": "admin", "name": "Keerthana U", "department": "IT", "employee_id": "VTPL1028"},
-            ]
-
-            for u in defaults:
-                existing_user = User.query.filter_by(email=u["email"]).first()
-                if not existing_user:
-                    user = User(
-                        employee_id=u["employee_id"],
-                        email=u["email"],
-                        password_hash=generate_password_hash(u["password"]),
-                        role=u["role"],
-                        username=u["username"],
-                        department=u["department"],
-                    )
-                    db.session.add(user)
-
+            # Add only the specific admin user if not exists
+            from werkzeug.security import generate_password_hash
+            from app import User  # Import User model here
+            
+            existing_user = User.query.filter_by(email='keerthana.u@violintec.com').first()
+            if not existing_user:
+                admin_user = User(
+                    employee_id='VTPL1028',
+                    email='keerthana.u@violintec.com',
+                    password_hash=generate_password_hash('Keerthu@123'),
+                    role='admin',
+                    username='keerthana',
+                    department='IT',
+                )
+                db.session.add(admin_user)
+            
+            # Add sample HOD user for testing
+            existing_hod = User.query.filter_by(email='hod.it@violintec.com').first()
+            if not existing_hod:
+                hod_user = User(
+                    employee_id='VTPL1029',
+                    email='hod.it@violintec.com',
+                    password_hash=generate_password_hash('Hod@123'),
+                    role='employee',
+                    username='IT HOD',
+                    department='IT',
+                    is_hod=True,
+                )
+                db.session.add(hod_user)
+            
+            # Add sample employee for testing
+            existing_employee = User.query.filter_by(email='emp123@violintec.com').first()
+            if not existing_employee:
+                employee_user = User(
+                    employee_id='VTPL1030',
+                    email='emp123@violintec.com',
+                    password_hash=generate_password_hash('Emp@123'),
+                    role='employee',
+                    username='Test Employee',
+                    department='IT',
+                )
+                db.session.add(employee_user)
+            
             db.session.commit()
-            print("✅ Default users ensured in database!")
+            print("✅ Database initialized with admin, HOD, and test employee users!")
 
     except Exception as e:
         print(f"❌ Error initializing database: {type(e).__name__}: {e}")

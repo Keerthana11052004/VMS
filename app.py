@@ -276,6 +276,7 @@ class User(UserMixin, db.Model):
     unit = db.Column(db.String(100))
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(IST_TIMEZONE))
+    is_hod = db.Column(db.Boolean, default=False)  # Field to identify HODs
 
 
 class Visitor(db.Model):
@@ -296,6 +297,9 @@ class Visitor(db.Model):
     qr_code = db.Column(db.String(200))
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     unit = db.Column(db.String(100)) # New column for visitor's unit
+    
+    # New field for work permit certificate (for vendor services)
+    work_permit_certificate = db.Column(db.String(200))  # Path to work permit certificate file
 
     # New fields for Meeting Description
     meeting_id = db.Column(db.String(50))
@@ -900,7 +904,35 @@ def dashboard():
             Visitor.unit == current_user.unit
         ).order_by(Visitor.from_datetime.desc()).limit(5).all()
 
-    else:  # Employee
+    elif current_user.is_hod and current_user.department:
+        # HODs see statistics for all employees in their department
+        today_visitors = Visitor.query.join(User, Visitor.host_id == User.id).filter(
+            db.or_(
+                db.func.date(Visitor.check_in_time) == today,
+                db.and_(
+                    db.func.date(Visitor.from_datetime) == today,
+                    Visitor.status == 'pending'
+                )
+            ),
+            User.department == current_user.department
+        ).count()
+
+        pending_approvals = Visitor.query.join(User, Visitor.host_id == User.id).filter(
+            Visitor.status == 'pending',
+            User.department == current_user.department
+        ).count()
+
+        total_exits = Visitor.query.join(User, Visitor.host_id == User.id).filter(
+            Visitor.status == 'exited',
+            User.department == current_user.department,
+            db.func.date(Visitor.check_out_time) == today
+        ).count()
+
+        recent_visitors = Visitor.query.join(User, Visitor.host_id == User.id).filter(
+            db.func.date(Visitor.from_datetime) == today,
+            User.department == current_user.department
+        ).order_by(Visitor.from_datetime.desc()).limit(5).all()
+    else:  # Regular employee
         today_visitors = Visitor.query.filter(
             db.or_(
                 db.func.date(Visitor.check_in_time) == today,
@@ -1010,7 +1042,13 @@ def approval_dashboard():
         pending_approvals = Visitor.query.filter_by(status='pending').order_by(Visitor.check_in_time.desc()).all()
     elif current_user.role == 'security':
         pending_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
-    else:  # Employee role
+    elif current_user.is_hod and current_user.department:
+        # HODs see pending approvals for all employees in their department
+        pending_approvals = Visitor.query.join(User, Visitor.host_id == User.id).filter(
+            Visitor.status == 'pending',
+            User.department == current_user.department
+        ).order_by(Visitor.check_in_time.desc()).all()
+    else:  # Regular employee
         pending_approvals = Visitor.query.filter_by(status='pending', host_id=current_user.id).order_by(Visitor.check_in_time.desc()).all()
 
     return render_template('approval_dashboard.html', pending_approvals=pending_approvals)
@@ -1120,6 +1158,7 @@ def get_visitor_details(visitor_id):
                     'other_id_proof_type': visitor.other_id_proof_type,
                     'id_proof_path': visitor.id_proof_path,
                     'visitor_image': visitor.visitor_image if visitor.visitor_image else None,
+                    'work_permit_certificate': visitor.work_permit_certificate,
                     'qr_code_url': qr_code_url,
                     'materials': materials_data
                 }
@@ -1221,6 +1260,8 @@ def check_in_approval():
 
     if request.method == 'POST':
         visitor_id = request.form.get('visitor_id')
+        work_permit_file = request.files.get('work_permit_certificate')
+        work_permit_captured_image = request.form.get('work_permit_captured_image')  # Captured image from camera
         if visitor_id:
             try:
                 visitor = Visitor.query.filter_by(Visitor_ID=visitor_id).first()
@@ -1228,6 +1269,96 @@ def check_in_approval():
                     if current_user.role == 'security' and visitor.unit != current_user.unit:
                         flash('Access denied to check-in for this unit.', 'error')
                         return redirect(url_for('check_in_approval', _external=True))
+                    
+                    # Check if purpose is 'Vendor Service' and require work permit certificate
+                    if visitor.purpose and 'Vendor Service' in visitor.purpose and not visitor.work_permit_certificate:
+                        # If work permit certificate is not provided yet, check if it's being uploaded now
+                        if work_permit_file and work_permit_file.filename != '':
+                            # Validate file type
+                            allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+                            if '.' in work_permit_file.filename and \
+                               work_permit_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
+                                # Generate unique filename
+                                filename = f"work_permit_{visitor_id}_{work_permit_file.filename}"
+                                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                work_permit_file.save(filepath)
+                                
+                                # Update visitor with work permit certificate path
+                                visitor.work_permit_certificate = filename
+                                db.session.commit()
+                                
+                                # Check if this is an AJAX request (JSON response needed)
+                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                    return jsonify({'success': True, 'message': 'Work permit certificate uploaded successfully!'})
+                                else:
+                                    flash('Work permit certificate uploaded successfully!', 'success')
+                            else:
+                                # Check if this is an AJAX request
+                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                    return jsonify({'success': False, 'message': 'Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.'})
+                                else:
+                                    flash('Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.', 'error')
+                                    return redirect(url_for('check_in_approval', _external=True))
+                        elif work_permit_captured_image:
+                            # Process captured image from camera
+                            import base64
+                            try:
+                                # Extract the image data from the data URL
+                                if work_permit_captured_image.startswith('data:image'):
+                                    # Extract the image format and data
+                                    header, encoded = work_permit_captured_image.split(',', 1)
+                                    image_format = header.split('/')[1].split(';')[0]
+                                    
+                                    # Decode the base64 image data
+                                    image_data = base64.b64decode(encoded)
+                                    
+                                    # Generate a unique filename
+                                    filename = f"work_permit_{visitor_id}_{datetime.now(IST_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.jpg"
+                                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                    
+                                    # Save the image
+                                    with open(filepath, 'wb') as f:
+                                        f.write(image_data)
+                                    
+                                    # Update visitor with work permit certificate path
+                                    visitor.work_permit_certificate = filename
+                                    db.session.commit()
+                                    
+                                    # Check if this is an AJAX request (JSON response needed)
+                                    if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                       request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                        return jsonify({'success': True, 'message': 'Work permit certificate uploaded successfully!'})
+                                    else:
+                                        flash('Work permit certificate uploaded successfully!', 'success')
+                                else:
+                                    # Check if this is an AJAX request
+                                    if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                       request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                        return jsonify({'success': False, 'message': 'Invalid image format received from camera.'})
+                                    else:
+                                        flash('Invalid image format received from camera.', 'error')
+                                        return redirect(url_for('check_in_approval', _external=True))
+                            except Exception as e:
+                                logging.error(f"Error processing captured image: {e}")
+                                # Check if this is an AJAX request
+                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                    return jsonify({'success': False, 'message': 'Error processing captured image.'})
+                                else:
+                                    flash('Error processing captured image.', 'error')
+                                    return redirect(url_for('check_in_approval', _external=True))
+                        else:
+                            # Check if this is an AJAX request
+                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                return jsonify({'success': False, 'message': 'Work permit certificate required for Vendor Service visitors. Please upload the certificate.'})
+                            else:
+                                # Show form to upload work permit certificate
+                                flash('Work permit certificate required for Vendor Service visitors. Please upload the certificate.', 'error')
+                                return render_template('check_in_approval.html', approved_visitors=[visitor])
+                    
                     # Only allow check-in if status is 'approved'
                     if visitor.status == 'approved':
                         visitor.check_in_time = datetime.now(IST_TIMEZONE)
@@ -1354,7 +1485,32 @@ def register_visitor():
         name = request.form.get('name', '').strip()
         email = request.form.get('email', '').strip()
         mobile = request.form.get('mobile', '').strip()
+        
+        # Handle purpose dropdown and additional fields
         purpose = request.form.get('purpose', '').strip()
+        other_purpose = request.form.get('other_purpose', '').strip()
+        company_name = request.form.get('company_name', '').strip()
+        esi_insurance_no = request.form.get('esi_insurance_no', '').strip()
+        
+        # Process purpose based on selection
+        if purpose == 'Others' and other_purpose.strip():
+            purpose = other_purpose.strip()
+        elif purpose == 'Others' and (not other_purpose or not other_purpose.strip()):
+            flash('Please specify the purpose of visit in the text field when selecting "Others".', 'error')
+            return render_template('register_visitor.html', employees=employees)
+        elif purpose == 'Vendor Service':
+            # For Vendor Service, company name and ESI/Insurance No are required
+            if not company_name.strip():
+                flash('Company Name is required when selecting "Vendor Service".', 'error')
+                return render_template('register_visitor.html', employees=employees)
+            if not esi_insurance_no.strip():
+                flash('ESI / Insurance No is required when selecting "Vendor Service".', 'error')
+                return render_template('register_visitor.html', employees=employees)
+            # Update purpose to include company name
+            purpose = f"Vendor Service - {company_name}"
+        else:
+            # For Interview and Meeting, just use the selected value
+            pass
         host_id = request.form.get('host_id')
         try:
             host_id = int(host_id) if host_id else None
@@ -1368,6 +1524,12 @@ def register_visitor():
 
         id_proof_type = request.form.get('id_proof_type')
         other_id_proof_type_value = request.form.get('other_id_proof_type')
+        
+        # Validate ID proof fields are mandatory
+        if not id_proof_type:
+            flash('ID Proof Type is required.', 'error')
+            return render_template('register_visitor.html', employees=employees)
+        
         final_id_proof_type = other_id_proof_type_value if id_proof_type == 'Others' else id_proof_type
 
         # Meeting fields
@@ -1378,13 +1540,11 @@ def register_visitor():
 
         # Visitor details
         visitor_type = request.form.get('visitor_type')
-        company = request.form.get('company')
         from_datetime_str = request.form.get('from_datetime')
         to_datetime_str = request.form.get('to_datetime')
         from_datetime = datetime.strptime(from_datetime_str, '%Y-%m-%dT%H:%M') if from_datetime_str else datetime.now(IST_TIMEZONE)
         to_datetime = datetime.strptime(to_datetime_str, '%Y-%m-%dT%H:%M') if to_datetime_str else datetime.now(IST_TIMEZONE)
         card_identification_name = request.form.get('card_identification_name')
-        access_group_name = request.form.get('access_group_name')
         Visitor_ID = request.form.get('Visitor_ID')
         logging.info(f"Visitor_ID received from form: {Visitor_ID}")
         # Refined cleaning logic for Visitor_ID
@@ -1405,6 +1565,7 @@ def register_visitor():
         material_makes = request.form.getlist('material_make[]')
         material_serial_numbers = request.form.getlist('material_serial_number[]')
         
+        logging.info(f"Purpose: {purpose}")
         logging.info(f"Material form data received:")
         logging.info(f"  Names: {material_names}")
         logging.info(f"  Types: {material_types}")
@@ -1439,6 +1600,12 @@ def register_visitor():
         
         # Handle captured visitor photo (base64 string in form field 'visitor_photo')
         visitor_photo_data = request.form.get('visitor_photo')
+        
+        # Validate that visitor photo is provided
+        if not visitor_photo_data or not visitor_photo_data.strip():
+            flash('Visitor Photo is required.', 'error')
+            return render_template('register_visitor.html', employees=employees)
+        
         if visitor_photo_data:
             try:
                 # Expecting data URI like "data:image/png;base64,....."
@@ -1473,11 +1640,11 @@ def register_visitor():
             no_of_hours=no_of_hours,
             visit_location=visit_location,
             visitor_type=visitor_type,
-            company=company,
+            company=company_name,  # Use company_name for vendor services, empty for others
             from_datetime=from_datetime,
             to_datetime=to_datetime,
             card_identification_name=card_identification_name,
-            access_group_name=access_group_name,
+            access_group_name='',  # Set to empty string since field was removed
             Visitor_ID=Visitor_ID,
             original_visitor_id=request.form.get('Visitor_ID'),
             unit=unit # Assign unit to new_visitor
@@ -1647,13 +1814,27 @@ def register_visitor():
             if host and host.email:
                 approval_link = url_for('approve_visitor', visitor_id=visitor.id, _external=True)
                 rejection_link = url_for('reject_visitor', visitor_id=visitor.id, _external=True)
-                host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
-
+                
+                # Determine who should receive the approval request - HOD if host is not admin
+                if host.role != 'admin' and host.department:
+                    # Find the HOD for the host's department
+                    hod = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
+                    if hod:
+                        approval_recipient = hod
+                        host_subject = f"Visitor Approval Request: {visitor.name} for {host.username} (Department: {host.department})"
+                    else:
+                        # If no HOD found, default to the host
+                        approval_recipient = host
+                        host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
+                else:
+                    # Admins receive requests directly
+                    approval_recipient = host
+                    host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
 
                 # HTML body (includes visitor photo if available)
                 host_html_body += f"""
-                    <p>Dear {h(host.username)},</p>
-                    <p>A new visitor, <strong>{h(visitor.name)}</strong>, has registered to meet you.</p>
+                    <p>Dear {h(approval_recipient.username)},</p>
+                    <p>A new visitor, <strong>{h(visitor.name)}</strong>, has registered to meet {host.username}.</p>
                     
                     <p><strong>Visitor Details:</strong></p>
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
@@ -1742,19 +1923,46 @@ def register_visitor():
 
                 embedded_image_path = os.path.join(app.config['UPLOAD_FOLDER'], visitor.visitor_image) if visitor.visitor_image else None
                 send_results = []
-                # Send to host
-                send_results.append(send_email(host.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo"))
+                # Send to appropriate approval recipient (HOD or host)
+                send_results.append(send_email(approval_recipient.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo"))
 
-                # Also send to approvers (all admins)
+                # Also send to approvers (all admins) - but not duplicate if HOD is also admin
                 approvers = User.query.filter_by(role='admin', is_active=True).all()
                 for approver in approvers:
-                    if approver.email and approver.email != host.email:
+                    # Don't send duplicate email if the HOD is also an admin
+                    if approver.email and approver.email != approval_recipient.email:
                         send_results.append(send_email(approver.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo"))
 
+                # Send notification to the host (employee being visited) about the visitor registration
+                host_notification_subject = f"Visitor Registration Notification: {visitor.name} wants to meet you"
+                host_notification_body = f"""
+Dear {h(host.username)},
+
+A visitor has registered to meet you:
+
+Name: {h(visitor.name)}
+Mobile: {h(visitor.mobile)}
+Email: {h(visitor.email)}
+Purpose: {h(visitor.purpose)}
+
+This visitor is currently awaiting approval from your department head.
+
+Best regards,
+VMS Team
+"""
+                
+                host_notification_result = False
+                if host.email and host.email != approval_recipient.email:
+                    # Don't send duplicate if the host is also the approval recipient (HOD)
+                    host_notification_result = send_email(host.email, host_notification_subject, host_notification_body, html_body=None, visitor=visitor)
+                    
                 if any(send_results):
-                    flash("Approval email sent to host/approvers.", 'success')
+                    if host_notification_result:
+                        flash("Approval email sent to HOD/approvers and notification sent to host.", 'success')
+                    else:
+                        flash("Approval email sent to HOD/approvers.", 'success')
                 else:
-                    flash("Failed to send approval email to host/approvers.", 'error')
+                    flash("Failed to send approval email to HOD/approvers.", 'error')
             else:
                 flash("Host email address is missing.", 'warning')
         except Exception as e:
@@ -1786,6 +1994,8 @@ def add_user():
         username = request.form['username']
         department = request.form.get('department')
         unit = request.form.get('unit')
+        is_hod = 'is_hod' in request.form  # Check if the checkbox is checked
+        is_active = 'is_active' in request.form  # Check if the checkbox is checked
 
         # Password policy: min 8 chars, upper, lower, digit, special
         policy = re.compile(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$')
@@ -1794,7 +2004,7 @@ def add_user():
             return render_template('add_user.html')
 
         hashed_password = generate_password_hash(password, method='scrypt:32768:8:1')
-        new_user = User(employee_id=employee_id, email=email, password_hash=hashed_password, role=role, username=username, department=department, unit=unit)
+        new_user = User(employee_id=employee_id, email=email, password_hash=hashed_password, role=role, username=username, department=department, unit=unit, is_hod=is_hod, is_active=is_active)
         try:
             db.session.add(new_user)
             db.session.commit()
@@ -1826,6 +2036,7 @@ def edit_user(user_id):
         user.department = request.form.get('department')
         user.unit = request.form.get('unit')
         user.is_active = 'is_active' in request.form
+        user.is_hod = 'is_hod' in request.form  # Update HOD status
 
         new_password = request.form.get('password')
         if new_password:
@@ -1888,7 +2099,7 @@ def settings():
     # Retrieve current settings for GET request
     current_settings = {
     'company_name': get_setting('company_name', 'VMS Pro'),
-    'system_title': get_setting('system_title', 'Visitor Management System Guard'),
+    'system_title': get_setting('system_title', 'Visitor Management System'),
     'MAIL_SERVER': get_setting('MAIL_SERVER', 'smtp.office365.com'),
     'MAIL_PORT': int(get_setting('MAIL_PORT', '587')),
     'MAIL_USE_TLS': get_setting('MAIL_USE_TLS', '1') == '1',
@@ -1918,14 +2129,11 @@ def delete_user(user_id):
 @rate_limit(limit=10, window=60, name='delete_visitor')
 @login_required
 def delete_visitor(visitor_id):
-    if current_user.role not in ['admin', 'security']:
-        flash('Access denied!', 'error')
+    if current_user.role != 'admin':
+        flash('Access denied! Only admin can delete visitors.', 'error')
         return redirect(url_for('dashboard',_external=True))
 
     visitor = Visitor.query.filter_by(Visitor_ID=visitor_id).first_or_404()
-    if current_user.role == 'security' and visitor.unit != current_user.unit:
-        flash('Access denied to delete visitors from other units.', 'error')
-        return redirect(url_for('visitor_status', _external=True))
 
     try:
             # Delete associated files
@@ -2120,8 +2328,17 @@ def public_visitor_image(visitor_id, image_type):
 @login_required
 def approve_visitor(visitor_id):
     visitor = Visitor.query.get_or_404(visitor_id)
-    if not (current_user.role == 'admin' or visitor.host_id == current_user.id):
-        flash('Access denied!', 'error')
+    
+    # Check if current user is admin, the host, or the HOD of the host's department
+    host = User.query.get(visitor.host_id)
+    is_hod_of_host_department = False
+    
+    if host and current_user.is_hod and current_user.department == host.department:
+        is_hod_of_host_department = True
+    
+    # Only allow admin or HOD of the host's department to approve
+    if not (current_user.role == 'admin' or is_hod_of_host_department):
+        flash('Access denied! Only admin or HOD can approve visitors.', 'error')
         return redirect(url_for('approval_dashboard',_external=True))
     visitor.status = 'approved'
     visitor.approved_at = datetime.now(IST_TIMEZONE) # Set the approval timestamp

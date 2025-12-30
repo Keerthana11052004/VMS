@@ -4,6 +4,9 @@
 {% block page_title %}Register Visitor{% endblock %}
 
 {% block content %}
+<!-- Ensure Select2 CSS and JS are loaded -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <div class="row justify-content-center">
     <div class="col-lg-10">
         <div class="card">
@@ -28,16 +31,16 @@
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="email" class="form-label">Email Address</label>
-                            <input type="email" class="form-control" id="email" name="email">
+                            <label for="email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
                         </div>
                         
                         <div class="col-md-6 mb-3">
                             <label for="host_id" class="form-label">Person to Meet *</label>
-                            <select class="form-select" id="host_id" name="host_id" required style="width: 100%;">
-                                <option value="">Select Employee</option>
+                            <select class="form-select select2" id="host_id" name="host_id" required>
+                                <option value="">Select Employee to Meet</option>
                                 {% for employee in employees %}
-                                <option value="{{ employee.id }}">{{ employee.username }} - {{ employee.department }}</option>
+                                <option value="{{ employee.id }}">{{ employee.username }} ({{ employee.department }})</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -52,17 +55,8 @@
                                 <option value="Official">Official</option>
                             </select>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="company" class="form-label">Company</label>
-                            <input type="text" class="form-control" id="company" name="company">
-                        </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="access_group_name" class="form-label">Access Group Name</label>
-                            <input type="text" class="form-control" id="access_group_name" name="access_group_name">
-                        </div>
-                    </div>
+
                     <div class="mb-3">
                         <label for="Visitor_ID" class="form-label">Visitor ID</label>
                         <input type="text" class="form-control" id="Visitor_ID" name="Visitor_ID" value="{{ generated_visitor_id }}" readonly>
@@ -81,14 +75,35 @@
                         </div>
                          <div class="mb-3">
                         <label for="purpose" class="form-label">Purpose of Visit *</label>
-                        <textarea class="form-control" id="purpose" name="purpose" rows="3" required
-                                   placeholder="Please describe the purpose of visit..."></textarea>
+                        <select class="form-select" id="purpose" name="purpose" required>
+                            <option value="" selected disabled>Select Purpose of Visit</option>
+                            <option value="Interview">Interview</option>
+                            <option value="Meeting">Meeting</option>
+                            <option value="Vendor Service">Vendor Service</option>
+                            <option value="Others">Others</option>
+                        </select>
+                        <div class="mt-2" id="other_purpose_div" style="display: none;">
+                            <label for="other_purpose" class="form-label">Please specify the purpose:</label>
+                            <input type="text" class="form-control" id="other_purpose" name="other_purpose" placeholder="Enter the purpose of visit">
+                        </div>
+                        <div class="mt-2" id="vendor_fields_div" style="display: none;">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="company_name" class="form-label">Company Name *</label>
+                                    <input type="text" class="form-control" id="company_name" name="company_name" placeholder="Enter company name">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="esi_insurance_no" class="form-label">ESI / Insurance No *</label>
+                                    <input type="text" class="form-control" id="esi_insurance_no" name="esi_insurance_no" placeholder="Enter ESI / Insurance number">
+                                </div>
+                            </div>
+                        </div>
                     </div>
   
                      <div class="col-md-6 mb-3">
-                        <label for="id_proof_type" class="form-label">Type of ID Proof (Optional)</label>
-                        <select class="form-select" id="id_proof_type" name="id_proof_type">
-                            <option value="">Select ID Proof Type</option>
+                        <label for="id_proof_type" class="form-label">Type of ID Proof *</label>
+                        <select class="form-select" id="id_proof_type" name="id_proof_type" required>
+                            <option value="" selected disabled>Select ID Proof Type</option>
                             <option value="Aadhar">Aadhar</option>
                             <option value="Pan">Pan</option>
                             <option value="Business Card">Business Card</option>
@@ -103,14 +118,14 @@
                         <input type="text" class="form-control" id="other_id_proof_type" name="other_id_proof_type">
                     </div>
                     <div class="mb-3">
-                        <label for="id_proof" class="form-label">ID Proof (Optional)</label>
+                        <label for="id_proof" class="form-label">ID Proof *</label>
                         <input type="file" class="form-control" id="id_proof" name="id_proof"
-                                 accept="image/*,.pdf,.doc,.docx">
+                                 accept="image/*,.pdf,.doc,.docx" required>
                         <div class="form-text">Accepted formats: Images, PDF, DOC, DOCX (Max 16MB)</div>
                     </div>
 
                      <div class="mb-3">
-                        <label class="form-label">Visitor Photo (Optional)</label>
+                        <label class="form-label">Visitor Photo *</label>
                         <div class="border p-2 rounded mb-2">
                             <video id="cameraFeed" width="100%" height="240" autoplay style="background-color: #eee;"></video>
                             <canvas id="cameraCanvas" width="320" height="240" style="display: none;"></canvas>
@@ -122,7 +137,7 @@
                                     <i class="fas fa-camera-retro me-1"></i>Capture Photo
                                 </button>
                             </div>
-                            <input type="hidden" id="visitorPhoto" name="visitor_photo">
+                            <input type="hidden" id="visitorPhoto" name="visitor_photo" required>
                         </div>
                         <div class="form-text">Capture a photo of the visitor using the camera.</div>
                     </div>
@@ -166,6 +181,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('form').addEventListener('submit', function(e) {
         const mobile = document.getElementById('mobile').value;
         const email = document.getElementById('email').value;
+        const purposeSelect = document.getElementById('purpose').value;
+        const otherPurposeInput = document.getElementById('other_purpose');
         
         // Mobile number validation
         if (!/^\d{10}$/.test(mobile.replace(/\s/g, ''))) {
@@ -174,10 +191,65 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
         
-        // Email validation (if provided)
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        // Email validation (required)
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             e.preventDefault();
             alert('Please enter a valid email address');
+            return false;
+        }
+        
+        // Purpose validation
+        if (purposeSelect === 'Others' && otherPurposeInput && otherPurposeInput.value.trim() === '') {
+            e.preventDefault();
+            alert('Please specify the purpose of visit when selecting "Others"');
+            return false;
+        } else if (purposeSelect === 'Others' && otherPurposeInput) {
+            // If Others is selected, validate that the other purpose field is not empty
+            if (otherPurposeInput.value.trim() === '') {
+                e.preventDefault();
+                alert('Please specify the purpose of visit in the text field when selecting "Others"');
+                return false;
+            }
+        } else if (purposeSelect === 'Vendor Service') {
+            // If Vendor Service is selected, validate company name and ESI/Insurance No
+            var companyNameInput = document.getElementById('company_name');
+            var esiInsuranceInput = document.getElementById('esi_insurance_no');
+            
+            if (!companyNameInput || companyNameInput.value.trim() === '') {
+                e.preventDefault();
+                alert('Company Name is required when selecting "Vendor Service"');
+                return false;
+            }
+            
+            if (!esiInsuranceInput || esiInsuranceInput.value.trim() === '') {
+                e.preventDefault();
+                alert('ESI / Insurance No is required when selecting "Vendor Service"');
+                return false;
+            }
+        }
+        
+        // ID Proof validation
+        var idProofType = document.getElementById('id_proof_type');
+        var idProofFile = document.getElementById('id_proof');
+        
+        if (!idProofType || idProofType.value === '') {
+            e.preventDefault();
+            alert('Please select an ID Proof Type');
+            return false;
+        }
+        
+        if (!idProofFile.files[0]) {
+            e.preventDefault();
+            alert('Please upload an ID Proof document');
+            return false;
+        }
+        
+        // Visitor Photo validation
+        var visitorPhoto = document.getElementById('visitorPhoto');
+        
+        if (!visitorPhoto.value || visitorPhoto.value.trim() === '') {
+            e.preventDefault();
+            alert('Please capture a visitor photo');
             return false;
         }
     });
@@ -319,13 +391,70 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add one material field by default when the page loads
     addMaterialField();
 
-    // Initialize Select2 for the host_id dropdown (after jQuery is loaded)
-    if (typeof $ !== 'undefined') {
+    // Initialize Select2 for the host_id dropdown
+    $(document).ready(function() {
         $('#host_id').select2({
             placeholder: "Select Employee",
             allowClear: true,
-            dropdownParent: $('#host_id').parent()
+            dropdownParent: $('#host_id').parent(),
+            width: '100%',
+            minimumInputLength: 0,
+            templateResult: formatEmployeeResult,
+            templateSelection: formatEmployeeSelection
         });
+        
+        // Add event listener to the purpose dropdown
+        var purposeSelect = document.getElementById('purpose');
+        if (purposeSelect) {
+            purposeSelect.addEventListener('change', togglePurposeInput);
+        }
+    });
+    
+    // Function to toggle purpose input based on dropdown selection
+    function togglePurposeInput() {
+        var purposeSelect = document.getElementById('purpose');
+        var otherPurposeDiv = document.getElementById('other_purpose_div');
+        var vendorFieldsDiv = document.getElementById('vendor_fields_div');
+        
+        if (purposeSelect && otherPurposeDiv && vendorFieldsDiv) {
+            if (purposeSelect.value === 'Others') {
+                otherPurposeDiv.style.display = 'block';
+                vendorFieldsDiv.style.display = 'none';
+                // Clear vendor fields when not needed
+                document.getElementById('company_name').value = '';
+                document.getElementById('esi_insurance_no').value = '';
+            } else if (purposeSelect.value === 'Vendor Service') {
+                otherPurposeDiv.style.display = 'none';
+                vendorFieldsDiv.style.display = 'block';
+                // Clear other purpose input when not needed
+                document.getElementById('other_purpose').value = '';
+            } else {
+                otherPurposeDiv.style.display = 'none';
+                vendorFieldsDiv.style.display = 'none';
+                // Clear all additional fields when not needed
+                document.getElementById('other_purpose').value = '';
+                document.getElementById('company_name').value = '';
+                document.getElementById('esi_insurance_no').value = '';
+            }
+        }
+    }
+    
+    // Format function for dropdown results
+    function formatEmployeeResult(employee) {
+        if (!employee.id) {
+            return employee.text;
+        }
+        var $result = $(
+            '<div class="select2-result-employee clearfix">' +
+                '<div class="select2-result-employee-name">' + employee.text + '</div>' +
+            '</div>'
+        );
+        return $result;
+    }
+    
+    // Format function for selection display
+    function formatEmployeeSelection(employee) {
+        return employee.text || employee.text;
     }
 });
 </script>

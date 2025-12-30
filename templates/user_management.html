@@ -23,6 +23,7 @@
                         <th>Email</th>
                         <th>Role</th>
                         <th>Department</th>
+                        <th>HOD</th>
                         <th>Active</th>
                         <th>Created At</th>
                         <th>Actions</th>
@@ -37,6 +38,13 @@
                         <td>{{ user.email }}</td>
                         <td>{{ user.role|title }}</td>
                         <td>{{ user.department or 'N/A' }}</td>
+                        <td>
+                            {% if user.is_hod %}
+                                <span class="badge bg-primary">Yes</span>
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if user.is_active %}
                                 <span class="badge bg-success">Yes</span>

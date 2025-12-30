@@ -87,10 +87,15 @@ def main():
         from init_db import init_database, drop_all_tables
 
         with app.app_context():
-            # Drop all tables and recreate them to ensure schema consistency
-            drop_all_tables()
+            # Create tables if they don't exist, without dropping existing data
             db.create_all()
-            init_database()
+            # Initialize with default users only if no users exist
+            from app import User
+            if User.query.first() is None:
+                from init_db import init_database
+                init_database()
+            else:
+                print("✅ Database tables exist, using existing data")
 
         print_startup_info()
 

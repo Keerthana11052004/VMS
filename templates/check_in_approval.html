@@ -19,6 +19,36 @@
             </div>
         </div>
 
+        <!-- Work Permit Certificate Upload Form for Vendor Services -->
+        <div id="work-permit-upload" style="display:none; margin-top: 20px; padding: 20px; border: 2px dashed #007bff; border-radius: 10px; background-color: #f8f9ff;">
+            <h5 class="text-center mb-3" style="color: #007bff;">Work Permit Certificate Required</h5>
+            <p class="text-center mb-3">This visitor has purpose "Vendor Service" and requires a work permit certificate.</p>
+            
+            <!-- File Upload Option -->
+            <div class="form-group">
+                <label for="work_permit_certificate" class="form-label">Upload Work Permit Certificate: <span class="text-danger">*</span></label>
+                <input type="file" class="form-control" id="work_permit_certificate" name="work_permit_certificate" accept=".png,.jpg,.jpeg,.gif,.pdf" required>
+                <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB. <span class="text-danger">*</span> Required for vendor service visitors</small>
+            </div>
+            
+            <!-- Camera Option -->
+            <div class="form-group">
+                <label class="form-label">Or take a photo of the document:</label>
+                <div class="d-flex flex-column align-items-center">
+                    <video id="workPermitVideo" width="320" height="240" style="border: 1px solid #ddd; margin-bottom: 10px; display: none;"></video>
+                    <button type="button" id="start-workPermit-camera" class="btn btn-outline-primary mb-2">Start Camera</button>
+                    <canvas id="workPermitCanvas" width="320" height="240" style="display: none;"></canvas>
+                    <button type="button" id="capture-workPermit-photo" class="btn btn-outline-success mb-2" style="display: none;">Capture Photo</button>
+                    <img id="workPermitPreview" style="display: none; max-width: 100%; margin-top: 10px;" alt="Captured document preview">
+                    <input type="hidden" id="workPermitCapturedImage" name="work_permit_captured_image">
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-center mt-3">
+                <button id="upload-work-permit-button" class="btn btn-primary">Upload Certificate</button>
+            </div>
+        </div>
+
         <!-- Other visitor details hidden - only showing ID card for check-in -->
         <div class="d-flex justify-content-between mt-3">
             <div>
@@ -293,7 +323,7 @@
                     document.querySelector('#visitor-mobile span').innerText = data.mobile || '';
                     document.getElementById('visitor-purpose').innerText = data.purpose || '';
                     document.getElementById('visitor-visitor-id').innerText = data.Visitor_ID || '';
-
+                
                     // Display visitor image if available
                     const visitorImage = document.getElementById('visitor-image');
                     const visitorImageContainer = document.getElementById('visitor-image-container');
@@ -316,16 +346,28 @@
                     } else {
                         qrCodeContainer.style.display = 'none';
                     }
-
+                
+                    // Check if purpose contains 'Vendor Service' and work_permit_certificate is not provided
+                    const isVendorService = data.purpose && data.purpose.includes('Vendor Service') && !data.work_permit_certificate;
+                                        
                     // Only showing ID card - other details removed for cleaner check-in experience
-
+                
                     visitorDetailsDiv.style.display = 'block';
                     checkInButton.style.display = 'none'; // Hide original check-in button
                     cancelButton.style.display = 'inline-block'; // Show cancel button
                     rejectButton.style.display = 'inline-block'; // Show reject button
-                    confirmCheckInButton.style.display = 'inline-block'; // Show confirm check-in button
                     document.getElementById('print-id-card-button').style.display = 'inline-block'; // Show print button
-
+                                        
+                    if (isVendorService) {
+                        // Show work permit upload form for vendor services without certificate
+                        document.getElementById('work-permit-upload').style.display = 'block';
+                        confirmCheckInButton.style.display = 'none'; // Hide check-in button
+                    } else {
+                        // Show check-in button for non-vendor services or vendor services with certificate
+                        document.getElementById('work-permit-upload').style.display = 'none';
+                        confirmCheckInButton.style.display = 'inline-block'; // Show confirm check-in button
+                    }
+                
                     currentVisitorId = visitorId; // Store the visitor ID for actions
                 } else {
                     console.error("❌ VISITOR NOT FOUND OR ERROR");
@@ -369,6 +411,123 @@
             });
         });
 
+        // Camera functionality for work permit document
+        const workPermitVideo = document.getElementById('workPermitVideo');
+        const workPermitCanvas = document.getElementById('workPermitCanvas');
+        const startWorkPermitCameraBtn = document.getElementById('start-workPermit-camera');
+        const captureWorkPermitBtn = document.getElementById('capture-workPermit-photo');
+        const workPermitPreview = document.getElementById('workPermitPreview');
+        const workPermitCapturedImage = document.getElementById('workPermitCapturedImage');
+        let workPermitStream = null;
+        
+        // Start camera for work permit document
+        if (startWorkPermitCameraBtn) {
+            startWorkPermitCameraBtn.addEventListener('click', async () => {
+                try {
+                    workPermitStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    workPermitVideo.srcObject = workPermitStream;
+                    workPermitVideo.style.display = 'block';
+                    startWorkPermitCameraBtn.style.display = 'none';
+                    captureWorkPermitBtn.style.display = 'block';
+                } catch (err) {
+                    console.error('Error accessing camera:', err);
+                    alert('Could not access the camera. Please ensure camera permissions are granted.');
+                }
+            });
+        }
+        
+        // Capture photo of work permit document
+        if (captureWorkPermitBtn) {
+            captureWorkPermitBtn.addEventListener('click', () => {
+                workPermitCanvas.getContext('2d').drawImage(workPermitVideo, 0, 0, workPermitCanvas.width, workPermitCanvas.height);
+                
+                // Convert captured image to data URL
+                const imageDataUrl = workPermitCanvas.toDataURL('image/jpeg', 0.8);
+                workPermitPreview.src = imageDataUrl;
+                workPermitPreview.style.display = 'block';
+                
+                // Store the captured image data in the hidden input
+                workPermitCapturedImage.value = imageDataUrl;
+                
+                // Stop the camera stream
+                if (workPermitStream) {
+                    workPermitStream.getTracks().forEach(track => track.stop());
+                    workPermitStream = null;
+                }
+                workPermitVideo.style.display = 'none';
+                captureWorkPermitBtn.style.display = 'none';
+                startWorkPermitCameraBtn.style.display = 'block';
+                
+                alert('Photo captured successfully!');
+            });
+        }
+        
+        // Event listener for the Upload Work Permit button
+        const uploadWorkPermitButton = document.getElementById('upload-work-permit-button');
+        if (uploadWorkPermitButton) {
+            uploadWorkPermitButton.addEventListener('click', () => {
+                if (currentVisitorId) {
+                    // Create a FormData object to send both visitor ID and file
+                    const formData = new FormData();
+                    formData.append('visitor_id', currentVisitorId);
+                    
+                    // Check if a captured image exists
+                    if (workPermitCapturedImage.value) {
+                        // Convert data URL to Blob and append to form
+                        fetch(workPermitCapturedImage.value)
+                            .then(res => res.blob())
+                            .then(blob => {
+                                // Create a file from the blob
+                                const file = new File([blob], `work_permit_${currentVisitorId}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                                formData.append('work_permit_certificate', file);
+                                
+                                // Submit the form with the captured image
+                                submitWorkPermitForm(formData);
+                            });
+                    } else {
+                        // Use file upload if no captured image
+                        const fileInput = document.getElementById('work_permit_certificate');
+                        if (fileInput.files.length > 0) {
+                            formData.append('work_permit_certificate', fileInput.files[0]);
+                            submitWorkPermitForm(formData);
+                        } else {
+                            alert('Please select a file to upload or capture a photo using the camera.');
+                        }
+                    }
+                } else {
+                    alert("No visitor selected.");
+                }
+            });
+        }
+        
+        // Helper function to submit work permit form
+        function submitWorkPermitForm(formData) {
+            fetch('{{ url_for("check_in_approval") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.success) {
+                    alert(data.message || 'Work permit certificate uploaded successfully!');
+                    // Hide the upload form and show the check-in button
+                    document.getElementById('work-permit-upload').style.display = 'none';
+                    document.getElementById('confirm-check-in-button').style.display = 'inline-block';
+                    
+                    // Reset form elements
+                    document.getElementById('work_permit_certificate').value = '';
+                    workPermitPreview.style.display = 'none';
+                    workPermitCapturedImage.value = '';
+                } else {
+                    alert(data.message || 'Error uploading work permit certificate.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error uploading work permit certificate: ' + error.message);
+            });
+        }
+        
         // Event listener for the Confirm Check-in button (now "OK")
         confirmCheckInButton.addEventListener('click', () => {
             if (currentVisitorId) {
