@@ -1,148 +1,152 @@
 {% extends "base.html" %}
-
-{% block title %}Visitor Details - {{ visitor.name }}{% endblock %}
-{% block page_title %}Visitor Details{% endblock %}
-
+{% block page_title %}Reports{% endblock %}
 {% block content %}
-<div class="row">
-    <div class="col-lg-8 offset-lg-2">
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="fas fa-user-circle me-2"></i>{{ visitor.name }}</h4>
-                <a href="{{ url_for('visitor_status') }}" class="btn btn-light btn-sm">
-                    <i class="fas fa-arrow-left me-2"></i>Back to Visitor Status
-                </a>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <strong>Visitor ID:</strong> {{ visitor.id }}
+<div class="container-fluid">
+    <h2 class="mb-4">Visitor Reports</h2>
+    
+    <!-- Report Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('reports') }}">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="report_type" class="form-label">Report Type</label>
+                        <select name="report_type" id="report_type" class="form-control">
+                            <option value="daily" {% if report_type == 'daily' %}selected{% endif %}>Daily</option>
+                            <option value="weekly" {% if report_type == 'weekly' %}selected{% endif %}>Weekly</option>
+                            <option value="monthly" {% if report_type == 'monthly' %}selected{% endif %}>Monthly</option>
+                        </select>
                     </div>
-                    <div class="col-md-6">
-                        <strong>Status:</strong>
-                        <span class="status-badge status-{{ visitor.status }}">
-                            {{ visitor.status|title }}
-                        </span>
+                    <div class="col-md-3">
+                        <label for="start_date" class="form-label">Start Date</label>
+                        <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date.strftime('%Y-%m-%d') if start_date else '' }}">
                     </div>
-                </div>
-
-                <hr>
-
-                <h5 class="mb-3"><i class="fas fa-info-circle me-2"></i>Personal Information</h5>
-                <div class="row mb-2">
-                    <div class="col-md-6">
-                        <strong>Name:</strong> {{ visitor.name }}
+                    <div class="col-md-3">
+                        <label for="end_date" class="form-label">End Date</label>
+                        <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date.strftime('%Y-%m-%d') if end_date else '' }}">
                     </div>
-                    <div class="col-md-6">
-                        <strong>Mobile:</strong> {{ visitor.mobile }}
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary">Generate Report</button>
                     </div>
                 </div>
-                <div class="row mb-2">
-                    <div class="col-md-6">
-                        <strong>Email:</strong> {{ visitor.email or 'N/A' }}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Type of ID Proof:</strong>
-                        {% if visitor.id_proof_type == 'Others' and visitor.other_id_proof_type %}
-                            {{ visitor.other_id_proof_type }}
-                        {% elif visitor.id_proof_type %}
-                            {{ visitor.id_proof_type }}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>ID Proof:</strong>
-                        {% if visitor.id_proof_path %}
-                            <a href="{{ url_for('uploaded_file', filename=visitor.id_proof_path) }}" target="_blank">View ID Proof</a>
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </div>
-                </div>
-
-                <hr>
-
-                <h5 class="mb-3"><i class="fas fa-building me-2"></i>Visit Details</h5>
-                <div class="row mb-2">
-                    <div class="col-12 mb-2">
-                        <strong>Purpose:</strong> {{ visitor.purpose }}
-                    </div>
-                    <div class="col-12">
-                        <strong>Visit Location:</strong> {{ visitor.visit_location or 'N/A' }}
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-6">
-                        <strong>Host:</strong> {{ visitor.host.username }} ({{ visitor.host.department }})
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Registered By:</strong> {{ visitor.created_by_user.username }}
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-6">
-                        <strong>Check-in Time:</strong> {% if visitor.status == 'approved' and visitor.check_in_time %}
-                        {{ visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') }}
-                    {% else %}
-                        Waiting for the approval
-                    {% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Check-out Time:</strong>
-                        {% if visitor.check_out_time %}
-                            {{ visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') }}
-                        {% else %}
-                            Pending
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-6">
-                        <strong>Registered On:</strong> {{ visitor.created_by_user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
-                    </div>                    
-                    <div class="col-md-6 d-flex flex-column justify-content-around align-items-center">
-                        <div class="text-center">
-                            <strong>QR Code:</strong>
-                            {% if qr_code_base64 %}
-                                <img src="data:image/png;base64,{{ qr_code_base64 }}" alt="QR Code" class="img-thumbnail" style="max-width: 150px; margin-bottom: 10px;">
-                            {% else %}
-                                N/A
-                            {% endif %}
+            </form>
+        </div>
+    </div>
+    
+    <!-- Report Summary -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title mb-0">Report Summary: {{ start_date.strftime('%Y-%m-%d') }} to {{ end_date.strftime('%Y-%m-%d') }}</h5>
+                            <p class="card-text mb-0">Total Visitors: {{ report_data|length }}</p>
                         </div>
-                        <div class="text-center">
-                            <strong>Visitor Photo:</strong>
-                            {% if visitor.visitor_image %}
-                                <img src="{{ url_for('uploaded_file', filename=visitor.visitor_image) }}" alt="Visitor Photo" class="img-thumbnail" style="max-width: 150px;">
-                            {% else %}
-                                N/A
-                            {% endif %}
+                        <div>
+                            <a href="{{ url_for('export_reports_csv', start_date=start_date.strftime('%Y-%m-%d'), end_date=end_date.strftime('%Y-%m-%d'), report_type=report_type) }}" class="btn btn-success">
+                                <i class="fas fa-file-csv me-2"></i>Export to CSV
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    
+    <!-- MIS Report Table -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">MIS Report</h5>
+        </div>
+        <div class="card-body">
+            {% if report_data %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Visitor Name</th>
+                            <th>Whom to Meet</th>
+                            <th>Check-in Time</th>
+                            <th>Check-out Time</th>
+                            <th>In Office Time</th>
+                            <th>Purpose of Visit</th>
+                            <th>Approved By</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for visitor in report_data %}
+                        <tr>
+                            <td>{{ visitor.name }}</td>
+                            <td>{{ visitor.host }}</td>
+                            <td>{{ visitor.check_in_time }}</td>
+                            <td>{{ visitor.check_out_time }}</td>
+                            <td>{{ visitor.in_office_time }}</td>
+                            <td>{{ visitor.purpose }}</td>
+                            <td>{{ visitor.approved_by }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if visitor.status == 'pending' %}bg-warning
+                                    {% elif visitor.status == 'approved' %}bg-info
+                                    {% elif visitor.status == 'checked-in' %}bg-primary
+                                    {% elif visitor.status == 'exited' %}bg-success
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ visitor.status.title() }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p>No visitors found for the selected date range.</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<style>
-    .status-badge {
-        display: inline-block;
-        padding: .35em .65em;
-        font-size: .75em;
-        font-weight: 700;
-        line-height: 1;
-        color: #fff;
-        text-align: center;
-        white-space: nowrap;
-        vertical-align: baseline;
-        border-radius: .25rem;
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-populate date fields based on report type
+    const reportTypeSelect = document.getElementById('report_type');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    
+    function updateDates() {
+        const today = new Date();
+        const reportType = reportTypeSelect.value;
+        
+        let startDate, endDate;
+        
+        if (reportType === 'daily') {
+            // Today's date
+            startDate = new Date(today);
+            endDate = new Date(today);
+        } else if (reportType === 'weekly') {
+            // Monday of current week
+            const dayOfWeek = today.getDay();
+            const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday (0), go back 6 days to Monday; otherwise, go back to Monday
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() + daysToMonday);
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6); // Sunday
+        } else if (reportType === 'monthly') {
+            // First and last day of current month
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        }
+        
+        startDateInput.value = startDate.toISOString().split('T')[0];
+        endDateInput.value = endDate.toISOString().split('T')[0];
     }
-    .status-pending { background-color: #ffc107; color: #212529; } /* Warning */
-    .status-approved { background-color: #28a745; } /* Success */
-    .status-rejected { background-color: #dc3545; } /* Danger */
-    .status-exited { background-color: #6c757d; } /* Secondary */
-</style>
+    
+    // Set default dates when page loads
+    updateDates();
+    
+    // Update dates when report type changes
+    reportTypeSelect.addEventListener('change', updateDates);
+});
+</script>
 {% endblock %}

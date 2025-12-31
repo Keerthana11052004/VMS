@@ -4,7 +4,7 @@ import io
 import smtplib
 from email.message import EmailMessage
 from email.mime.image import MIMEImage  # Import MIMEImage
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, abort, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, send_from_directory, abort, session, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from flask_sqlalchemy import SQLAlchemy
@@ -300,6 +300,9 @@ class Visitor(db.Model):
     
     # New field for work permit certificate (for vendor services)
     work_permit_certificate = db.Column(db.String(200))  # Path to work permit certificate file
+    
+    # Field to track who approved the visitor
+    approved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # ID of user who approved
 
     # New fields for Meeting Description
     meeting_id = db.Column(db.String(50))
@@ -320,6 +323,7 @@ class Visitor(db.Model):
     # New fields for Material Details (single entry for now)
     host = db.relationship('User', foreign_keys=[host_id])
     created_by_user = db.relationship('User', foreign_keys=[created_by])
+    approved_by_user = db.relationship('User', foreign_keys=[approved_by_id])
     materials = db.relationship('Material', backref='visitor', lazy=True, cascade="all, delete-orphan")
 
 
@@ -1070,7 +1074,8 @@ def get_visitor_details(visitor_id):
         ).options(
             joinedload(Visitor.host),
             joinedload(Visitor.materials),
-            joinedload(Visitor.created_by_user)
+            joinedload(Visitor.created_by_user),
+            joinedload(Visitor.approved_by_user)
         ).first()
         
         # If not found, try with cleaned ID (digits only)
@@ -1082,7 +1087,8 @@ def get_visitor_details(visitor_id):
                 visitor = Visitor.query.filter(Visitor.Visitor_ID == cleaned_visitor_id).options(
                     joinedload(Visitor.host),
                     joinedload(Visitor.materials),
-                    joinedload(Visitor.created_by_user)
+                    joinedload(Visitor.created_by_user),
+                    joinedload(Visitor.approved_by_user)
                 ).first()
         
         if not visitor:
@@ -1159,6 +1165,7 @@ def get_visitor_details(visitor_id):
                     'id_proof_path': visitor.id_proof_path,
                     'visitor_image': visitor.visitor_image if visitor.visitor_image else None,
                     'work_permit_certificate': visitor.work_permit_certificate,
+                    'approved_by': visitor.approved_by_user.username if visitor.approved_by_user else 'N/A',
                     'qr_code_url': qr_code_url,
                     'materials': materials_data
                 }
@@ -2342,6 +2349,7 @@ def approve_visitor(visitor_id):
         return redirect(url_for('approval_dashboard',_external=True))
     visitor.status = 'approved'
     visitor.approved_at = datetime.now(IST_TIMEZONE) # Set the approval timestamp
+    visitor.approved_by_id = current_user.id  # Set who approved the visitor
     db.session.commit()
 
     # Send email to visitor with details and QR code
@@ -2588,6 +2596,210 @@ def index():
     else:
         # return "<h3>login page</h3>"
         return redirect(url_for('login',_external=True))
+
+# Report route for MIS reports
+@app.route('/vms/reports')
+@login_required
+def reports():
+    from sqlalchemy.orm import joinedload
+    
+    # Get the date range from request parameters, default to current date
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    report_type = request.args.get('report_type', 'daily')  # daily, weekly, monthly
+    
+    # Set default date range based on report type
+    if start_date_str and end_date_str:
+        # Use dates from form submission
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    else:
+        # Calculate default dates based on report type
+        today = datetime.now(IST_TIMEZONE).date()
+        if report_type == 'daily':
+            start_date = today
+            end_date = today
+        elif report_type == 'weekly':
+            start_date = today - timedelta(days=today.weekday())  # Monday of current week
+            end_date = start_date + timedelta(days=6)
+        elif report_type == 'monthly':
+            start_date = today.replace(day=1)  # First day of current month
+            # Calculate last day of month
+            if today.month == 12:
+                end_date = today.replace(month=12, day=31)
+            else:
+                end_date = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+        else:
+            start_date = today
+            end_date = today
+    
+    # Query visitors based on role and date range
+    query = Visitor.query
+    
+    # Filter by date range (check_in_time)
+    start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=IST_TIMEZONE)
+    end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=IST_TIMEZONE)
+    query = query.filter(Visitor.check_in_time.between(start_datetime, end_datetime))
+    
+    # Apply role-based filters
+    if current_user.role == 'admin':
+        # Admin can see all visitors
+        pass
+    elif current_user.role == 'security':
+        # Security can see visitors for their unit
+        query = query.filter(Visitor.unit == current_user.unit)
+    elif current_user.role == 'employee':
+        # Employee can see visitors they hosted
+        query = query.filter(Visitor.host_id == current_user.id)
+    
+    # Get visitors with all required data
+    visitors = query.options(joinedload(Visitor.host), joinedload(Visitor.approved_by_user)).order_by(Visitor.check_in_time.desc()).all()
+    
+    # Calculate additional data like in-office time
+    report_data = []
+    for visitor in visitors:
+        in_office_time = "N/A"
+        if visitor.check_in_time and visitor.check_out_time:
+            duration = visitor.check_out_time - visitor.check_in_time
+            hours, remainder = divmod(duration.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+        elif visitor.check_in_time:
+            # Calculate time from check-in to now
+            duration = datetime.now(IST_TIMEZONE) - visitor.check_in_time
+            hours, remainder = divmod(duration.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} (still in office)"
+        
+        # Get the user who approved the visitor (if available)
+        approved_by = 'N/A'
+        if visitor.approved_by_user:
+            approved_by = visitor.approved_by_user.username
+        
+        report_data.append({
+            'name': visitor.name,
+            'host': visitor.host.username if visitor.host else 'N/A',
+            'check_in_time': visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A',
+            'check_out_time': visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_out_time else 'N/A',
+            'in_office_time': in_office_time,
+            'purpose': visitor.purpose,
+            'status': visitor.status,
+            'approved_by': approved_by
+        })
+    
+    return render_template('reports.html', 
+                           report_data=report_data, 
+                           start_date=start_date, 
+                           end_date=end_date, 
+                           report_type=report_type)
+
+
+@app.route('/vms/reports/export_csv')
+@login_required
+def export_reports_csv():
+    from sqlalchemy.orm import joinedload
+    import csv
+    from io import StringIO
+    
+    # Get the date range from request parameters
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    report_type = request.args.get('report_type', 'daily')  # daily, weekly, monthly
+    
+    # Parse date range
+    if start_date_str and end_date_str:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    else:
+        # Calculate default dates based on report type
+        today = datetime.now(IST_TIMEZONE).date()
+        if report_type == 'daily':
+            start_date = today
+            end_date = today
+        elif report_type == 'weekly':
+            start_date = today - timedelta(days=today.weekday())  # Monday of current week
+            end_date = start_date + timedelta(days=6)
+        elif report_type == 'monthly':
+            start_date = today.replace(day=1)  # First day of current month
+            # Calculate last day of month
+            if today.month == 12:
+                end_date = today.replace(month=12, day=31)
+            else:
+                end_date = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+        else:
+            start_date = today
+            end_date = today
+    
+    # Query visitors based on role and date range
+    query = Visitor.query
+    
+    # Filter by date range (check_in_time)
+    start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=IST_TIMEZONE)
+    end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=IST_TIMEZONE)
+    query = query.filter(Visitor.check_in_time.between(start_datetime, end_datetime))
+    
+    # Apply role-based filters
+    if current_user.role == 'admin':
+        # Admin can see all visitors
+        pass
+    elif current_user.role == 'security':
+        # Security can see visitors for their unit
+        query = query.filter(Visitor.unit == current_user.unit)
+    elif current_user.role == 'employee':
+        # Employee can see visitors they hosted
+        query = query.filter(Visitor.host_id == current_user.id)
+    
+    # Get visitors with all required data
+    visitors = query.options(joinedload(Visitor.host), joinedload(Visitor.created_by_user), joinedload(Visitor.approved_by_user)).order_by(Visitor.check_in_time.desc()).all()
+    
+    # Create CSV in memory
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow(['Visitor Name', 'Whom to Meet', 'Check-in Time', 'Check-out Time', 'In Office Time', 'Purpose of Visit', 'Status', 'Approved By'])
+    
+    # Write data rows
+    for visitor in visitors:
+        in_office_time = "N/A"
+        if visitor.check_in_time and visitor.check_out_time:
+            duration = visitor.check_out_time - visitor.check_in_time
+            hours, remainder = divmod(duration.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+        elif visitor.check_in_time:
+            # Calculate time from check-in to now
+            duration = datetime.now(IST_TIMEZONE) - visitor.check_in_time
+            hours, remainder = divmod(duration.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} (still in office)"
+        
+        # Get the user who approved the visitor (if available)
+        approved_by = 'N/A'
+        if visitor.approved_by_user:
+            approved_by = visitor.approved_by_user.username
+        
+        writer.writerow([
+            visitor.name,
+            visitor.host.username if visitor.host else 'N/A',
+            visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A',
+            visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_out_time else 'N/A',
+            in_office_time,
+            visitor.purpose,
+            visitor.status,
+            approved_by
+        ])
+    
+    # Get the CSV string and convert to bytes
+    csv_data = output.getvalue()
+    output.close()
+    
+    # Create response with CSV data
+    response = Response(csv_data, mimetype='text/csv')
+    response.headers['Content-Disposition'] = f'attachment; filename=visitor_report_{start_date_str}_to_{end_date_str}.csv'
+    
+    return response
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001)

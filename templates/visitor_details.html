@@ -110,12 +110,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6 mb-2">
-                        <div class="info-item">
-                            <label class="info-label"><i class="fas fa-users me-2"></i>Access Group</label>
-                            <div class="info-value">{{ visitor.access_group_name or 'N/A' }}</div>
-                        </div>
-                    </div>
+
                     <div class="col-md-6 mb-2">
                         <div class="info-item">
                             <label class="info-label"><i class="fas fa-user-plus me-2"></i>Registered By</label>
@@ -125,6 +120,14 @@
                                 {% else %}
                                     N/A
                                 {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-check-circle me-2"></i>Approved By</label>
+                            <div class="info-value">
+                                {{ visitor.approved_by or 'N/A' }}
                             </div>
                         </div>
                     </div>
