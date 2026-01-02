@@ -127,7 +127,7 @@
                         <div class="info-item">
                             <label class="info-label"><i class="fas fa-check-circle me-2"></i>Approved By</label>
                             <div class="info-value">
-                                {{ visitor.approved_by or 'N/A' }}
+                                {{ visitor.approved_by_user.username if visitor.approved_by_user else 'N/A' }}
                             </div>
                         </div>
                     </div>
