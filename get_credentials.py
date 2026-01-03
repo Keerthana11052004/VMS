@@ -1,9 +1,35 @@
 import mysql.connector
+import os
+from urllib.parse import urlparse
 from werkzeug.security import generate_password_hash
 
 def update_password(name, password):
     try:
-        cnx = mysql.connector.connect(user='root', password='Violin@12', host='localhost', database='vms_pro')
+        # Get database connection details from environment variables
+        database_url = os.environ.get('DATABASE_URL', 'mysql+pymysql://root:Violin@12@localhost:3306/vms_pro')
+        
+        # Parse the database URL to extract components
+        if database_url.startswith('mysql'):
+            # Remove mysql:// or mysql+pymysql:// prefix
+            db_url = database_url.replace('mysql+pymysql://', '').replace('mysql://', '')
+            # Extract user:password@host:port/database
+            user_pass, host_db = db_url.split('@')
+            user, password_db = user_pass.split(':')
+            host_port, database = host_db.split('/')
+            if ':' in host_port:
+                host, port = host_port.split(':')
+            else:
+                host = host_port
+                port = '3306'
+        else:
+            # Default fallback values
+            user = os.environ.get('DB_USER', 'root')
+            password_db = os.environ.get('DB_PASSWORD', 'Violin@12')
+            host = os.environ.get('DB_HOST', 'localhost')
+            port = os.environ.get('DB_PORT', '3306')
+            database = 'vms_pro'
+        
+        cnx = mysql.connector.connect(user=user, password=password_db, host=host, port=int(port), database=database)
         cursor = cnx.cursor()
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
         query = "UPDATE user SET password_hash = %s WHERE name = %s"
@@ -18,7 +44,31 @@ def update_password(name, password):
 
 def get_credentials():
     try:
-        cnx = mysql.connector.connect(user='root', password='Violin@12', host='localhost', database='vms_pro')
+        # Get database connection details from environment variables
+        database_url = os.environ.get('DATABASE_URL', 'mysql+pymysql://root:Violin@12@localhost:3306/vms_pro')
+        
+        # Parse the database URL to extract components
+        if database_url.startswith('mysql'):
+            # Remove mysql:// or mysql+pymysql:// prefix
+            db_url = database_url.replace('mysql+pymysql://', '').replace('mysql://', '')
+            # Extract user:password@host:port/database
+            user_pass, host_db = db_url.split('@')
+            user, password_db = user_pass.split(':')
+            host_port, database = host_db.split('/')
+            if ':' in host_port:
+                host, port = host_port.split(':')
+            else:
+                host = host_port
+                port = '3306'
+        else:
+            # Default fallback values
+            user = os.environ.get('DB_USER', 'root')
+            password_db = os.environ.get('DB_PASSWORD', 'Violin@12')
+            host = os.environ.get('DB_HOST', 'localhost')
+            port = os.environ.get('DB_PORT', '3306')
+            database = 'vms_pro'
+        
+        cnx = mysql.connector.connect(user=user, password=password_db, host=host, port=int(port), database=database)
         cursor = cnx.cursor()
         query = "SELECT name, password_hash, role FROM user"
         cursor.execute(query)

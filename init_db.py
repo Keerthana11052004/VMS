@@ -5,6 +5,7 @@ This script creates the database and tables for the Visitor Management System.
 """
 
 import sys
+import os
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
 
@@ -21,8 +22,26 @@ def create_database():
 
     if db_type == 'mysql':
         try:
-            password = quote_plus("Violin@12")
-            engine = create_engine(f"mysql+pymysql://root:{password}@localhost/")
+            # Extract MySQL connection details from DATABASE_URL
+            database_url = Config.SQLALCHEMY_DATABASE_URI
+            import re
+            # Pattern to extract user, password, host, port from mysql url
+            pattern = r"mysql\\+pymysql://([^:]+):([^@]+)@([^:/]+):?(\\d+)?/"
+            match = re.match(pattern, database_url)
+            if match:
+                user, password, host, port = match.groups()
+                port = port or '3306'  # default MySQL port
+                password = quote_plus(password)
+                engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}:{port}/")
+            else:
+                # Fallback: extract from environment variables
+                import os
+                user = os.environ.get('DB_USER', 'root')
+                password = os.environ.get('DB_PASSWORD', 'Violin@12')
+                host = os.environ.get('DB_HOST', 'localhost')
+                port = os.environ.get('DB_PORT', '3306')
+                password = quote_plus(password)
+                engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}:{port}/")
 
             with engine.connect() as conn:
                 conn.execute(text("CREATE DATABASE IF NOT EXISTS vms_pro"))
@@ -35,8 +54,26 @@ def create_database():
 
     elif db_type == 'postgresql':
         try:
-            password = quote_plus("Violin@12")
-            engine = create_engine(f"postgresql://root:{password}@localhost/postgres")
+            # Extract PostgreSQL connection details from DATABASE_URL
+            database_url = Config.SQLALCHEMY_DATABASE_URI
+            import re
+            # Pattern to extract user, password, host, port from postgresql url
+            pattern = r"postgresql://([^:]+):([^@]+)@([^:/]+):?(\d+)?/"
+            match = re.match(pattern, database_url)
+            if match:
+                user, password, host, port = match.groups()
+                port = port or '5432'  # default PostgreSQL port
+                password = quote_plus(password)
+                engine = create_engine(f"postgresql://{user}:{password}@{host}:{port}/postgres")
+            else:
+                # Fallback: extract from environment variables
+                import os
+                user = os.environ.get('DB_USER', 'postgres')
+                password = os.environ.get('DB_PASSWORD', 'Violin@12')
+                host = os.environ.get('DB_HOST', 'localhost')
+                port = os.environ.get('DB_PORT', '5432')
+                password = quote_plus(password)
+                engine = create_engine(f"postgresql://{user}:{password}@{host}:{port}/postgres")
 
             with engine.connect() as conn:
                 result = conn.execute(

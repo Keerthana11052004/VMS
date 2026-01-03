@@ -40,7 +40,7 @@
                             <select class="form-select select2" id="host_id" name="host_id" required>
                                 <option value="">Select Employee to Meet</option>
                                 {% for employee in employees %}
-                                <option value="{{ employee.id }}">{{ employee.username }} ({{ employee.department }})</option>
+                                <option value="{{ employee.id }}">{{ employee.username }} - {{ employee.department }} ({{ employee.role }})</option>
                                 {% endfor %}
                             </select>
                         </div>

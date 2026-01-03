@@ -1474,7 +1474,7 @@ def register_visitor():
         flash('Access denied!', 'error')
         return redirect(url_for('dashboard',_external=True))
 
-    employees = User.query.filter_by(role='employee', is_active=True).all()
+    employees = User.query.filter_by(is_active=True).all()
 
     if request.method == 'GET':
         generated_visitor_id = ''.join(random.choices('0123456789', k=5))
@@ -2666,7 +2666,12 @@ def reports():
             in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
         elif visitor.check_in_time:
             # Calculate time from check-in to now
-            duration = datetime.now(IST_TIMEZONE) - visitor.check_in_time
+            # Make DB datetime timezone-aware before subtraction
+            check_in_time = visitor.check_in_time
+            if check_in_time.tzinfo is None:
+                check_in_time = check_in_time.replace(tzinfo=IST_TIMEZONE)
+
+            duration = datetime.now(IST_TIMEZONE) - check_in_time
             hours, remainder = divmod(duration.total_seconds(), 3600)
             minutes, seconds = divmod(remainder, 60)
             in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} (still in office)"
@@ -2769,7 +2774,13 @@ def export_reports_csv():
             in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
         elif visitor.check_in_time:
             # Calculate time from check-in to now
-            duration = datetime.now(IST_TIMEZONE) - visitor.check_in_time
+            # Make DB datetime timezone-aware before subtraction
+            check_in_time = visitor.check_in_time
+            
+            if check_in_time.tzinfo is None:
+                check_in_time = check_in_time.replace(tzinfo=IST_TIMEZONE)
+
+            duration = datetime.now(IST_TIMEZONE) - check_in_time
             hours, remainder = divmod(duration.total_seconds(), 3600)
             minutes, seconds = divmod(remainder, 60)
             in_office_time = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d} (still in office)"
