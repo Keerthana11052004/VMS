@@ -9,7 +9,7 @@
         <div class="card-body">
             <form method="GET" action="{{ url_for('reports') }}">
                 <div class="row">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="report_type" class="form-label">Report Type</label>
                         <select name="report_type" id="report_type" class="form-control">
                             <option value="daily" {% if report_type == 'daily' %}selected{% endif %}>Daily</option>
@@ -17,15 +17,36 @@
                             <option value="monthly" {% if report_type == 'monthly' %}selected{% endif %}>Monthly</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="start_date" class="form-label">Start Date</label>
                         <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date.strftime('%Y-%m-%d') if start_date else '' }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="end_date" class="form-label">End Date</label>
                         <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date.strftime('%Y-%m-%d') if end_date else '' }}">
                     </div>
-                    <div class="col-md-3 d-flex align-items-end">
+                    <div class="col-md-2">
+                        <label for="unit_filter" class="form-label">Unit</label>
+                        <select name="unit_filter" id="unit_filter" class="form-control">
+                            <option value="all" {% if not request.args.get('unit_filter') or request.args.get('unit_filter') == 'all' %}selected{% endif %}>All Units</option>
+                            <option value="Unit-1" {% if request.args.get('unit_filter') == 'Unit-1' %}selected{% endif %}>Unit-1</option>
+                            <option value="Unit-2" {% if request.args.get('unit_filter') == 'Unit-2' %}selected{% endif %}>Unit-2</option>
+                            <option value="Unit-3" {% if request.args.get('unit_filter') == 'Unit-3' %}selected{% endif %}>Unit-3</option>
+                            <option value="Unit-4" {% if request.args.get('unit_filter') == 'Unit-4' %}selected{% endif %}>Unit-4</option>
+                            <option value="Unit-5" {% if request.args.get('unit_filter') == 'Unit-5' %}selected{% endif %}>Unit-5</option>
+                            <option value="GSS" {% if request.args.get('unit_filter') == 'GSS' %}selected{% endif %}>GSS</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="host_filter" class="form-label">Whom to Meet</label>
+                        <select name="host_filter" id="host_filter" class="form-control">
+                            <option value="all" {% if not request.args.get('host_filter') or request.args.get('host_filter') == 'all' %}selected{% endif %}>All Employees</option>
+                            {% for user in users %}
+                                <option value="{{ user.id }}" {% if request.args.get('host_filter') == user.id|string %}selected{% endif %}>{{ user.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
                         <button type="submit" class="btn btn-primary">Generate Report</button>
                     </div>
                 </div>
@@ -67,6 +88,7 @@
                         <tr>
                             <th>Visitor Name</th>
                             <th>Whom to Meet</th>
+                            <th>Unit</th>
                             <th>Check-in Time</th>
                             <th>Check-out Time</th>
                             <th>In Office Time</th>
@@ -80,6 +102,7 @@
                         <tr>
                             <td>{{ visitor.name }}</td>
                             <td>{{ visitor.host }}</td>
+                            <td>{{ visitor.unit }}</td>
                             <td>{{ visitor.check_in_time }}</td>
                             <td>{{ visitor.check_out_time }}</td>
                             <td>{{ visitor.in_office_time }}</td>

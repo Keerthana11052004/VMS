@@ -36,6 +36,7 @@ from functools import wraps
 import secrets
 from PIL import Image, ImageDraw, ImageFont
 import urllib.request
+from threading import Thread
 
 
 def _ensure_dir(path):
@@ -379,11 +380,11 @@ def set_setting(key, value):
         db.session.add(setting)
     db.session.commit()
 
-def send_email(to_email, subject, body, html_body=None, embedded_image_path=None, embedded_image_cid=None, visitor=None):
+def send_email_background(to_email, subject, body, html_body=None, embedded_image_path=None, embedded_image_cid=None, visitor=None):
+    """Internal function to send email in the background"""
     # Check if email functionality is enabled
     if not app.config.get('ENABLE_EMAIL', True):
         logging.info(f"Email sending is disabled. Skipping email to {to_email}.")
-        flash(f"Email sent to {to_email} successfully!", 'success')  # Simulate success
         return True
 
     msg = EmailMessage()
@@ -419,36 +420,31 @@ def send_email(to_email, subject, body, html_body=None, embedded_image_path=None
     try:
         logging.info(f"Attempting to send email to {to_email}")
         if app.config.get('MAIL_USE_SSL'):
-            smtp = smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
+            smtp = smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=10)
         else:
-            smtp = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
+            smtp = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=10)
             smtp.ehlo()
             if app.config.get('MAIL_USE_TLS'):
                 smtp.starttls()
         smtp.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
         smtp.send_message(msg)
         logging.info(f"Email sent to {to_email} successfully!")
-        flash(f"Email sent to {to_email} successfully!", 'success')
         return True
     except smtplib.SMTPAuthenticationError as e:
         error_message = f"SMTP Authentication Error: {e}. Please check MAIL_USERNAME and MAIL_PASSWORD in .env. If MFA is enabled, use an App Password."
         logging.error(f"Failed to send email to {to_email}: {error_message}")
-        flash(f"Failed to send email to {to_email}: {error_message}", 'error')
         return False
     except smtplib.SMTPConnectError as e:
         error_message = f"SMTP Connection Error: {e}. Please check MAIL_SERVER and MAIL_PORT in .env, and ensure the server is reachable."
         logging.error(f"Failed to send email to {to_email}: {error_message}")
-        flash(f"Failed to send email to {to_email}: {error_message}", 'error')
         return False
     except smtplib.SMTPException as e:
         error_message = f"SMTP Error: {e}. A general SMTP error occurred."
         logging.error(f"Failed to send email to {to_email}: {error_message}")
-        flash(f"Failed to send email to {to_email}: {error_message}", 'error')
         return False
     except Exception as e:
         error_message = f"An unexpected error occurred: {e}."
         logging.error(f"Failed to send email to {to_email}: {error_message}")
-        flash(f"Failed to send email to {to_email}: {error_message}", 'error')
         return False
     finally:
         if smtp:
@@ -456,6 +452,24 @@ def send_email(to_email, subject, body, html_body=None, embedded_image_path=None
                 smtp.quit()
             except Exception as e:
                 logging.error(f"Failed to close SMTP connection: {e}")
+
+def send_email(to_email, subject, body, html_body=None, embedded_image_path=None, embedded_image_cid=None, visitor=None, async_mode=True):
+    """Send email, optionally in async mode to not block the request"""
+    # Check if email functionality is enabled
+    if not app.config.get('ENABLE_EMAIL', True):
+        logging.info(f"Email sending is disabled. Skipping email to {to_email}.")
+        return True
+    
+    if async_mode:
+        # Send email in background thread to not block the request
+        thread = Thread(target=send_email_background, args=(to_email, subject, body, html_body, embedded_image_path, embedded_image_cid, visitor))
+        thread.daemon = True  # Dies when main thread dies
+        thread.start()
+        logging.info(f"Email to {to_email} queued for sending in background")
+        return True  # Return immediately as email is queued
+    else:
+        # Send email synchronously (old behavior)
+        return send_email_background(to_email, subject, body, html_body, embedded_image_path, embedded_image_cid, visitor)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -617,7 +631,7 @@ def resend_otp():
         subject = 'Your VMS Login OTP'
         body = f"Your one-time password is: {session['mfa_otp']}\nIt expires in 5 minutes."
         html_body = f"<p>Your one-time password is:</p><h2 style='letter-spacing:3px;'>{otp}</h2><p>This code expires in 5 minutes.</p>"
-        send_email(user.email, subject, body, html_body=html_body)
+        send_email(user.email, subject, body, html_body=html_body, async_mode=True)
         flash('A new OTP has been sent to your email.', 'info')
     except Exception:
         flash('Failed to resend OTP. Please try again.', 'error')
@@ -679,7 +693,7 @@ def login():
                 subject = 'Your VMS Login OTP'
                 body = f"Your one-time password is: {session['mfa_otp']}\nIt expires in 5 minutes."
                 html_body = f"<p>Your one-time password is:</p><h2 style='letter-spacing:3px;'>{session['mfa_otp']}</h2><p>This code expires in 5 minutes.</p>"
-                send_email(user.email, subject, body, html_body=html_body)
+                send_email(user.email, subject, body, html_body=html_body, async_mode=True)
                 flash('OTP sent to your email address.', 'info')
             except Exception:
                 flash('Failed to send OTP. Please try again.', 'error')
@@ -721,7 +735,7 @@ def forgot_password():
             subject = 'VMS Password Reset OTP'
             body = f"Your one-time password for password reset is: {otp}\nIt expires in 10 minutes."
             html_body = f"<p>Your one-time password for password reset is:</p><h2 style='letter-spacing:3px;'>{otp}</h2><p>This code expires in 10 minutes.</p>"
-            send_email(user.email, subject, body, html_body=html_body)
+            send_email(user.email, subject, body, html_body=html_body, async_mode=True)
             flash('A password reset OTP has been sent to your email address.', 'info')
             return redirect(url_for('verify_reset_otp', _external=True))
         except Exception as e:
@@ -796,7 +810,7 @@ def resend_reset_otp():
         subject = 'VMS Password Reset OTP'
         body = f"Your new one-time password for password reset is: {otp}\nIt expires in 10 minutes."
         html_body = f"<p>Your new one-time password for password reset is:</p><h2 style='letter-spacing:3px;'>{otp}</h2><p>This code expires in 10 minutes.</p>"
-        send_email(user.email, subject, body, html_body=html_body)
+        send_email(user.email, subject, body, html_body=html_body, async_mode=True)
         flash('A new password reset OTP has been sent to your email.', 'info')
     except Exception as e:
         logging.error(f"Error resending password reset OTP to {user.email}: {e}")
@@ -851,7 +865,7 @@ def reset_password():
         subject = 'VMS Password Reset OTP'
         body = f"Your new one-time password for password reset is: {otp}\nIt expires in 10 minutes."
         html_body = f"<p>Your new one-time password for password reset is:</p><h2 style='letter-spacing:3px;'>{otp}</h2><p>This code expires in 10 minutes.</p>"
-        send_email(user.email, subject, body, html_body=html_body)
+        send_email(user.email, subject, body, html_body=html_body, async_mode=True)
         flash('A new password reset OTP has been sent to your email.', 'info')
     except Exception as e:
         logging.error(f"Error resending password reset OTP to {user.email}: {e}")
@@ -1474,7 +1488,7 @@ def register_visitor():
         flash('Access denied!', 'error')
         return redirect(url_for('dashboard',_external=True))
 
-    employees = User.query.filter_by(is_active=True).all()
+    employees = User.query.filter_by(role='employee', is_active=True).all()
 
     if request.method == 'GET':
         generated_visitor_id = ''.join(random.choices('0123456789', k=5))
@@ -1800,10 +1814,9 @@ def register_visitor():
                     <p>For any urgent inquiries or assistance, please feel free to contact our team</p>
                     <p>Best regards,<br>Vilion Technologies Pvt Ltd</p>
             """
-                if send_email(visitor.email, subject, body, html_body=html_body, visitor=visitor):
-                    flash(f"Email sent to visitor ({visitor.email}) successfully!", 'success')
-                else:
-                    flash(f"Failed to send email to visitor ({visitor.email}).", 'error')
+                # Send email in background
+                send_email(visitor.email, subject, body, html_body=html_body, visitor=visitor, async_mode=True)
+                # Email status not checked due to async mode
             else:
                 flash("Visitor email address is missing.", 'warning')
         except Exception as e:
@@ -1930,15 +1943,17 @@ def register_visitor():
 
                 embedded_image_path = os.path.join(app.config['UPLOAD_FOLDER'], visitor.visitor_image) if visitor.visitor_image else None
                 send_results = []
-                # Send to appropriate approval recipient (HOD or host)
-                send_results.append(send_email(approval_recipient.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo"))
+                # Send to appropriate approval recipient (HOD or host) in background
+                send_email(approval_recipient.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                send_results.append(True)  # Assume success in async mode
 
                 # Also send to approvers (all admins) - but not duplicate if HOD is also admin
                 approvers = User.query.filter_by(role='admin', is_active=True).all()
                 for approver in approvers:
                     # Don't send duplicate email if the HOD is also an admin
                     if approver.email and approver.email != approval_recipient.email:
-                        send_results.append(send_email(approver.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo"))
+                        send_email(approver.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                        send_results.append(True)  # Assume success in async mode
 
                 # Send notification to the host (employee being visited) about the visitor registration
                 host_notification_subject = f"Visitor Registration Notification: {visitor.name} wants to meet you"
@@ -1961,7 +1976,8 @@ VMS Team
                 host_notification_result = False
                 if host.email and host.email != approval_recipient.email:
                     # Don't send duplicate if the host is also the approval recipient (HOD)
-                    host_notification_result = send_email(host.email, host_notification_subject, host_notification_body, html_body=None, visitor=visitor)
+                    send_email(host.email, host_notification_subject, host_notification_body, html_body=None, visitor=visitor, async_mode=True)
+                    host_notification_result = True  # Assume success in async mode
                     
                 if any(send_results):
                     if host_notification_result:
@@ -2493,10 +2509,9 @@ This is an automated email. Please do not reply to this message.
 ════════════════════════════════════════════════════════════
             """
 
-            if send_email(visitor.email, subject, plain_body, html_body=html_body, embedded_image_path=qr_code_path, embedded_image_cid=qr_cid):
-                flash(f"Approval email with QR code sent to visitor ({visitor.email}) successfully!", 'success')
-            else:
-                flash(f"Failed to send approval email to visitor ({visitor.email}).", 'error')
+            # Send email in background
+            send_email(visitor.email, subject, plain_body, html_body=html_body, embedded_image_path=qr_code_path, embedded_image_cid=qr_cid, async_mode=True)
+            # Email status not checked due to async mode
         else:
             flash("Visitor email address is missing, cannot send approval email.", 'warning')
     except Exception as e:
@@ -2608,6 +2623,10 @@ def reports():
     end_date_str = request.args.get('end_date')
     report_type = request.args.get('report_type', 'daily')  # daily, weekly, monthly
     
+    # Get filter parameters from request
+    unit_filter = request.args.get('unit_filter')
+    host_filter = request.args.get('host_filter')
+    
     # Set default date range based on report type
     if start_date_str and end_date_str:
         # Use dates from form submission
@@ -2641,6 +2660,14 @@ def reports():
     end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=IST_TIMEZONE)
     query = query.filter(Visitor.check_in_time.between(start_datetime, end_datetime))
     
+    # Apply unit filter if provided
+    if unit_filter and unit_filter != 'all':
+        query = query.filter(Visitor.unit == unit_filter)
+    
+    # Apply host filter if provided
+    if host_filter and host_filter != 'all':
+        query = query.filter(Visitor.host_id == host_filter)
+    
     # Apply role-based filters
     if current_user.role == 'admin':
         # Admin can see all visitors
@@ -2654,6 +2681,9 @@ def reports():
     
     # Get visitors with all required data
     visitors = query.options(joinedload(Visitor.host), joinedload(Visitor.approved_by_user)).order_by(Visitor.check_in_time.desc()).all()
+    
+    # Get all users for the host filter dropdown
+    users = User.query.filter_by(is_active=True).all()
     
     # Calculate additional data like in-office time
     report_data = []
@@ -2684,6 +2714,7 @@ def reports():
         report_data.append({
             'name': visitor.name,
             'host': visitor.host.username if visitor.host else 'N/A',
+            'unit': visitor.unit if visitor.unit else 'N/A',
             'check_in_time': visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A',
             'check_out_time': visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_out_time else 'N/A',
             'in_office_time': in_office_time,
@@ -2696,7 +2727,8 @@ def reports():
                            report_data=report_data, 
                            start_date=start_date, 
                            end_date=end_date, 
-                           report_type=report_type)
+                           report_type=report_type,
+                           users=users)
 
 
 @app.route('/vms/reports/export_csv')
@@ -2710,6 +2742,10 @@ def export_reports_csv():
     start_date_str = request.args.get('start_date')
     end_date_str = request.args.get('end_date')
     report_type = request.args.get('report_type', 'daily')  # daily, weekly, monthly
+    
+    # Get filter parameters from request
+    unit_filter = request.args.get('unit_filter')
+    host_filter = request.args.get('host_filter')
     
     # Parse date range
     if start_date_str and end_date_str:
@@ -2743,6 +2779,14 @@ def export_reports_csv():
     end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=IST_TIMEZONE)
     query = query.filter(Visitor.check_in_time.between(start_datetime, end_datetime))
     
+    # Apply unit filter if provided
+    if unit_filter and unit_filter != 'all':
+        query = query.filter(Visitor.unit == unit_filter)
+    
+    # Apply host filter if provided
+    if host_filter and host_filter != 'all':
+        query = query.filter(Visitor.host_id == host_filter)
+    
     # Apply role-based filters
     if current_user.role == 'admin':
         # Admin can see all visitors
@@ -2762,7 +2806,7 @@ def export_reports_csv():
     writer = csv.writer(output)
     
     # Write header
-    writer.writerow(['Visitor Name', 'Whom to Meet', 'Check-in Time', 'Check-out Time', 'In Office Time', 'Purpose of Visit', 'Status', 'Approved By'])
+    writer.writerow(['Visitor Name', 'Whom to Meet', 'Unit', 'Check-in Time', 'Check-out Time', 'In Office Time', 'Purpose of Visit', 'Status', 'Approved By'])
     
     # Write data rows
     for visitor in visitors:
@@ -2793,6 +2837,7 @@ def export_reports_csv():
         writer.writerow([
             visitor.name,
             visitor.host.username if visitor.host else 'N/A',
+            visitor.unit if visitor.unit else 'N/A',
             visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_in_time else 'N/A',
             visitor.check_out_time.strftime('%Y-%m-%d %H:%M:%S') if visitor.check_out_time else 'N/A',
             in_office_time,

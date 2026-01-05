@@ -26,13 +26,13 @@ def create_database():
             database_url = Config.SQLALCHEMY_DATABASE_URI
             import re
             # Pattern to extract user, password, host, port from mysql url
-            pattern = r"mysql\\+pymysql://([^:]+):([^@]+)@([^:/]+):?(\\d+)?/"
+            pattern = r"mysql\\+mysqlconnector://([^:]+):([^@]+)@([^:/]+):?(\\d+)?/"
             match = re.match(pattern, database_url)
             if match:
                 user, password, host, port = match.groups()
                 port = port or '3306'  # default MySQL port
                 password = quote_plus(password)
-                engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}:{port}/")
+                engine = create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/")
             else:
                 # Fallback: extract from environment variables
                 import os
@@ -41,7 +41,7 @@ def create_database():
                 host = os.environ.get('DB_HOST', 'localhost')
                 port = os.environ.get('DB_PORT', '3306')
                 password = quote_plus(password)
-                engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}:{port}/")
+                engine = create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/")
 
             with engine.connect() as conn:
                 conn.execute(text("CREATE DATABASE IF NOT EXISTS vms_pro"))
