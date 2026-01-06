@@ -10,3 +10,4 @@ python-dotenv==1.0.0
 Flask-Migrate==4.0.5
 mysql-connector-python==8.2.0
 openpyxl==3.1.2
+schedule==1.2.0

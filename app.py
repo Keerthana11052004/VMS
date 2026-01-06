@@ -37,6 +37,7 @@ import secrets
 from PIL import Image, ImageDraw, ImageFont
 import urllib.request
 from threading import Thread
+import atexit
 
 
 def _ensure_dir(path):
@@ -301,6 +302,12 @@ class Visitor(db.Model):
     
     # New field for work permit certificate (for vendor services)
     work_permit_certificate = db.Column(db.String(200))  # Path to work permit certificate file
+    
+    # Field for ESI/Insurance number (for vendor services)
+    esi_insurance_no = db.Column(db.String(100))  # ESI/Insurance number for vendor services
+    
+    # Field to track if 3-hour reminder email has been sent
+    reminder_sent = db.Column(db.Boolean, default=False)  # Track if 3-hour reminder was sent
     
     # Field to track who approved the visitor
     approved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # ID of user who approved
@@ -1177,6 +1184,7 @@ def get_visitor_details(visitor_id):
                     'id_proof_type': visitor.id_proof_type,
                     'other_id_proof_type': visitor.other_id_proof_type,
                     'id_proof_path': visitor.id_proof_path,
+                    'esi_insurance_no': visitor.esi_insurance_no,
                     'visitor_image': visitor.visitor_image if visitor.visitor_image else None,
                     'work_permit_certificate': visitor.work_permit_certificate,
                     'approved_by': visitor.approved_by_user.username if visitor.approved_by_user else 'N/A',
@@ -1668,6 +1676,7 @@ def register_visitor():
             access_group_name='',  # Set to empty string since field was removed
             Visitor_ID=Visitor_ID,
             original_visitor_id=request.form.get('Visitor_ID'),
+            esi_insurance_no=esi_insurance_no,
             unit=unit # Assign unit to new_visitor
         )
         # Process and add unique materials to the visitor
@@ -2589,7 +2598,8 @@ def uploaded_file(filename):
         db.or_(
             Visitor.id_proof_path == filename,
             Visitor.visitor_image == filename,
-            Visitor.qr_code == filename
+            Visitor.qr_code == filename,
+            Visitor.work_permit_certificate == filename
         )
     ).first()
     if not visitor:
@@ -2876,7 +2886,7 @@ def test_email():
                 <h2>Test Email from VMS Pro</h2>
                 <p>This is a test email from the Visitor Management System to verify email functionality.</p>
                 <p>If you received this email, the SMTP configuration is working correctly.</p>
-                <p>Best regards,<br>VMS Pro Team</p>
+                <p>Best regards,<br>VMS Team</p>
             </body>
         </html>
         '''
@@ -2890,6 +2900,73 @@ def test_email():
     
     return redirect(url_for('dashboard', _external=True))
 
+
+def check_long_visits():
+    """Check for visitors who have been checked in for more than 3 hours and send reminder emails"""
+    try:
+        # Get current time in IST
+        now = datetime.now(IST_TIMEZONE)
+        # Calculate the time 3 hours ago
+        three_hours_ago = now - timedelta(hours=3)
+        
+        # Find visitors who are checked in, have been here for more than 3 hours, and haven't received a reminder yet
+        long_visitors = Visitor.query.filter(
+            Visitor.status == 'checked-in',
+            Visitor.check_in_time < three_hours_ago,
+            Visitor.reminder_sent == False
+        ).all()
+        
+        for visitor in long_visitors:
+            # Get the host (person visitor is meeting)
+            host = visitor.host
+            if host:
+                # Prepare email details
+                subject = f'Visitor Reminder: {visitor.name} has been in the organization for more than 3 hours'
+                body = f'''Dear {host.username},\n\nThis is a reminder that visitor {visitor.name} (ID: {visitor.Visitor_ID}) has been in the organization for more than 3 hours.\n\nVisitor Details:\n- Name: {visitor.name}\n- Mobile: {visitor.mobile}\n- Purpose: {visitor.purpose}\n- Check-in Time: {visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S')}\n- Current Status: Checked-in\n\nPlease ensure the visitor completes their business and checks out.\n\nRegards,\nVMS Team'''
+                
+                html_body = f'''<html><body><h3>Visitor Reminder</h3><p>Dear {host.username},</p><p>This is a reminder that visitor <strong>{visitor.name}</strong> (ID: {visitor.Visitor_ID}) has been in the organization for more than 3 hours.</p><h4>Visitor Details:</h4><ul><li><strong>Name:</strong> {visitor.name}</li><li><strong>Mobile:</strong> {visitor.mobile}</li><li><strong>Purpose:</strong> {visitor.purpose}</li><li><strong>Check-in Time:</strong> {visitor.check_in_time.strftime('%Y-%m-%d %H:%M:%S')}</li><li><strong>Current Status:</strong> Checked-in</li></ul><p>Please ensure the visitor completes their business and checks out.</p><p>Regards,<br>VMS Team</p></body></html>'''
+                
+                # Send email to the host
+                if host.email:
+                    send_email(host.email, subject, body, html_body=html_body, async_mode=True)
+                    logging.info(f'3-hour reminder email sent to host {host.username} for visitor {visitor.name}')
+                
+                # Find department head/HOD and send them an email too
+                dept_hod = User.query.filter(
+                    User.department == host.department,
+                    User.role.in_(['admin', 'hod'])  # Assuming HOD or admin might be department head
+                ).first()
+                
+                if dept_hod and dept_hod.email and dept_hod.id != host.id:
+                    send_email(dept_hod.email, subject, body, html_body=html_body, async_mode=True)
+                    logging.info(f'3-hour reminder email sent to department head {dept_hod.username} for visitor {visitor.name}')
+                
+                # Mark that the reminder has been sent to avoid duplicate emails
+                visitor.reminder_sent = True
+                db.session.commit()
+    except Exception as e:
+        logging.error(f'Error in check_long_visits: {e}', exc_info=True)
+
+
+def run_scheduler():
+    """Run the scheduler in a background thread"""
+    with app.app_context():
+        # Run once at startup to catch any visitors who exceeded the time while the system was down
+        check_long_visits()
+    
+    # Run the check every hour (3600 seconds)
+    while True:
+        time.sleep(3600)  # Sleep for 1 hour
+        with app.app_context():
+            check_long_visits()  # Check for long visits
+
+
+# Start the scheduler in a background thread when the app starts
+if __name__ != "__main__":
+    # Start scheduler in a background thread
+    scheduler_thread = Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    logging.info('Scheduler started in background thread')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001)

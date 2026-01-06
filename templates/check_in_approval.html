@@ -13,6 +13,9 @@
             <h4 id="visitor-name" class="mb-2" style="color: #343a40; font-weight: bold; font-size: 1.5rem;"></h4>
             <p id="visitor-mobile" class="mb-1" style="font-size: 1.1rem; color: #495057;"><i class="fas fa-phone"></i> <span></span></p>
             <p id="visitor-purpose" class="mb-3" style="font-size: 1rem; color: #6c757d; font-style: italic;"></p>
+            <div id="work-permit-container" style="margin-top: 10px; padding: 10px; background-color: #f0f8ff; border-radius: 5px; border-left: 4px solid #007bff; display: none;">
+                <p id="work-permit-info" class="mb-1" style="font-size: 0.9rem; color: #495057;"><i class="fas fa-file-alt me-2"></i><strong>Work Permit Certificate:</strong> <span id="work-permit-value"></span></p>
+            </div>
             <div id="qr-code-container" style="display:none; margin-top: 20px; padding: 15px; background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <img id="qr-code-image" src="" alt="QR Code" style="width: 180px; height: 180px;">
                 <p class="mt-2 mb-0" style="font-weight: bold; color: #007bff; font-size: 1.1rem;">Visitor ID: <span id="visitor-visitor-id"></span></p>
@@ -323,6 +326,30 @@
                     document.querySelector('#visitor-mobile span').innerText = data.mobile || '';
                     document.getElementById('visitor-purpose').innerText = data.purpose || '';
                     document.getElementById('visitor-visitor-id').innerText = data.Visitor_ID || '';
+                    
+                    // Show Work Permit Certificate if visitor purpose is Vendor Service
+                    const workPermitContainer = document.getElementById('work-permit-container');
+                    const workPermitValue = document.getElementById('work-permit-value');
+                    if (data.purpose && data.purpose.includes('Vendor Service')) {
+                        if (data.work_permit_certificate) {
+                            // Create a link to view the work permit certificate
+                            const link = document.createElement('a');
+                            link.href = `/vms/uploads/${data.work_permit_certificate}`;
+                            link.target = '_blank';
+                            link.className = 'btn btn-sm btn-outline-primary';
+                            link.innerHTML = '<i class="fas fa-external-link-alt me-1"></i>View Document';
+                            
+                            // Clear the container and add the link
+                            workPermitValue.innerHTML = '';
+                            workPermitValue.appendChild(link);
+                            workPermitContainer.style.display = 'block';
+                        } else {
+                            workPermitValue.innerText = 'Not uploaded';
+                            workPermitContainer.style.display = 'block';
+                        }
+                    } else {
+                        workPermitContainer.style.display = 'none';
+                    }
                 
                     // Display visitor image if available
                     const visitorImage = document.getElementById('visitor-image');

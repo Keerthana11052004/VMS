@@ -197,6 +197,28 @@
                     </div>
                 </div>
 
+                <!-- Work Permit Certificate Section (for Vendor Services) -->
+                {% if visitor.purpose and 'Vendor Service' in visitor.purpose %}
+                <hr class="section-divider">
+                <h5 class="section-title"><i class="fas fa-file-contract me-2"></i>Work Permit Certificate</h5>
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-file-alt me-2"></i>Work Permit Document</label>
+                            <div class="info-value">
+                                {% if visitor.work_permit_certificate %}
+                                <a href="{{ url_for('uploaded_file', filename=visitor.work_permit_certificate) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>View Document
+                                </a>
+                                {% else %}
+                                N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 {% if visitor.materials %}
                 <hr class="section-divider">
                 <h5 class="section-title"><i class="fas fa-box-open me-2"></i>Material Details</h5>
