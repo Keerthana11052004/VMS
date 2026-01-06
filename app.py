@@ -420,9 +420,9 @@ def send_email_background(to_email, subject, body, html_body=None, embedded_imag
     try:
         logging.info(f"Attempting to send email to {to_email}")
         if app.config.get('MAIL_USE_SSL'):
-            smtp = smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=10)
+            smtp = smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=30)
         else:
-            smtp = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=10)
+            smtp = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=30)
             smtp.ehlo()
             if app.config.get('MAIL_USE_TLS'):
                 smtp.starttls()
@@ -2855,6 +2855,40 @@ def export_reports_csv():
     response.headers['Content-Disposition'] = f'attachment; filename=visitor_report_{start_date_str}_to_{end_date_str}.csv'
     
     return response
+
+
+# Test email endpoint
+@app.route('/vms/test_email')
+@login_required
+def test_email():
+    if current_user.role != 'admin':
+        flash('Access denied!', 'error')
+        return redirect(url_for('dashboard', _external=True))
+    
+    try:
+        # Send a test email
+        to_email = 'keerthana.u@violintec.com'
+        subject = 'Test Email from VMS Pro'
+        body = 'This is a test email from the Visitor Management System to verify email functionality.'
+        html_body = '''
+        <html>
+            <body>
+                <h2>Test Email from VMS Pro</h2>
+                <p>This is a test email from the Visitor Management System to verify email functionality.</p>
+                <p>If you received this email, the SMTP configuration is working correctly.</p>
+                <p>Best regards,<br>VMS Pro Team</p>
+            </body>
+        </html>
+        '''
+        
+        # Use async mode to prevent blocking
+        send_email(to_email, subject, body, html_body=html_body, async_mode=True)
+        
+        flash(f'Test email sent to {to_email}. Check server logs for delivery status.', 'success')
+    except Exception as e:
+        flash(f'Error sending test email: {str(e)}', 'error')
+    
+    return redirect(url_for('dashboard', _external=True))
 
 
 if __name__ == "__main__":

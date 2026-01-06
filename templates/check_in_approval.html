@@ -347,8 +347,10 @@
                         qrCodeContainer.style.display = 'none';
                     }
                 
-                    // Check if purpose contains 'Vendor Service' and work_permit_certificate is not provided
-                    const isVendorService = data.purpose && data.purpose.includes('Vendor Service') && !data.work_permit_certificate;
+                    // Check if purpose contains 'Vendor Service' (case insensitive) and work_permit_certificate is not provided
+                    console.log('Debug: Purpose =', data.purpose, ', Work Permit Certificate =', data.work_permit_certificate);
+                    const isVendorService = data.purpose && data.purpose.toLowerCase().includes('vendor service') && (!data.work_permit_certificate || data.work_permit_certificate.trim() === '');
+                    console.log('Debug: isVendorService =', isVendorService);
                                         
                     // Only showing ID card - other details removed for cleaner check-in experience
                 
@@ -473,6 +475,10 @@
                     
                     // Check if a captured image exists
                     if (workPermitCapturedImage.value) {
+                        // Add CSRF token to form data
+                        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+                        formData.append('csrf_token', csrfToken);
+                                        
                         // Convert data URL to Blob and append to form
                         fetch(workPermitCapturedImage.value)
                             .then(res => res.blob())
@@ -480,7 +486,7 @@
                                 // Create a file from the blob
                                 const file = new File([blob], `work_permit_${currentVisitorId}_${Date.now()}.jpg`, { type: 'image/jpeg' });
                                 formData.append('work_permit_certificate', file);
-                                
+                                                
                                 // Submit the form with the captured image
                                 submitWorkPermitForm(formData);
                             });
@@ -488,6 +494,10 @@
                         // Use file upload if no captured image
                         const fileInput = document.getElementById('work_permit_certificate');
                         if (fileInput.files.length > 0) {
+                            // Add CSRF token to form data
+                            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+                            formData.append('csrf_token', csrfToken);
+                            
                             formData.append('work_permit_certificate', fileInput.files[0]);
                             submitWorkPermitForm(formData);
                         } else {
@@ -504,9 +514,23 @@
         function submitWorkPermitForm(formData) {
             fetch('{{ url_for("check_in_approval") }}', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             })
-            .then(response => response.json())
+            .then(async response => {
+                // Check if response is JSON or HTML
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json();
+                } else {
+                    // If not JSON, try to extract error message from HTML
+                    const html = await response.text();
+                    console.error('Non-JSON response received:', html);
+                    throw new Error('Server returned an error page instead of JSON');
+                }
+            })
             .then(data => {
                 if (data && data.success) {
                     alert(data.message || 'Work permit certificate uploaded successfully!');

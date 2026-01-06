@@ -189,7 +189,8 @@
                         console.log("🔢 Decoded Text as String:", String(decodedText));
                         console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                         stopQrScanner();
-                        fetchVisitorDetailsAndShowActions(decodedText);
+                        // Automatically process check-out instead of just showing details
+                        processCheckOut(decodedText);
                     },
                     (errorMessage) => {
                         // Scanning error - this is normal, just means no QR code detected yet
@@ -240,6 +241,108 @@
             stopQrScanner();
         });
 
+        // Function to fetch visitor details and show buttons
+        async function fetchVisitorDetailsAndShowActions(visitorId) {
+        }
+        
+        // Function to process check-out automatically after QR scan
+        async function processCheckOut(visitorId) {
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            console.log("🔄 PROCESSING AUTO CHECK-OUT");
+            console.log("📝 Visitor ID Parameter:", visitorId);
+            console.log("🌐 API URL:", `/vms/check_out_approval (POST)`);
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            
+            try {
+                // Show loading indicator
+                const originalButtonText = confirmCheckOutButton.innerHTML;
+                confirmCheckOutButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+                confirmCheckOutButton.disabled = true;
+                
+                // Create form data to submit the check-out request
+                const formData = new FormData();
+                formData.append('visitor_id', visitorId);
+                formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+                
+                const response = await fetch('/vms/check_out_approval', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                const resultText = await response.text();
+                
+                // Parse the result to check for success
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(resultText, 'text/html');
+                const flashMessages = doc.querySelectorAll('.alert');
+                
+                let successMessage = null;
+                let errorMessage = null;
+                
+                flashMessages.forEach(msg => {
+                    if (msg.classList.contains('alert-success')) {
+                        successMessage = msg.textContent.trim();
+                    } else if (msg.classList.contains('alert-error') || msg.classList.contains('alert-danger')) {
+                        errorMessage = msg.textContent.trim();
+                    }
+                });
+                
+                // Restore button state
+                confirmCheckOutButton.innerHTML = originalButtonText;
+                confirmCheckOutButton.disabled = false;
+                
+                if (response.ok && successMessage) {
+                    console.log("✅ Check-out successful!", successMessage);
+                    
+                    // Show success message
+                    const successAlert = document.createElement('div');
+                    successAlert.className = 'alert alert-success';
+                    successAlert.innerHTML = '<i class="fas fa-check-circle me-2"></i>' + successMessage;
+                    document.querySelector('.main-content').prepend(successAlert);
+                    
+                    // Auto-hide the success message after 3 seconds
+                    setTimeout(() => {
+                        successAlert.remove();
+                    }, 3000);
+                    
+                    // Reload the page to update the visitor list
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    console.error("❌ Check-out failed!", errorMessage || 'Unknown error');
+                    
+                    // Show error message
+                    const errorAlert = document.createElement('div');
+                    errorAlert.className = 'alert alert-danger';
+                    errorAlert.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>' + (errorMessage || 'Error processing check-out');
+                    document.querySelector('.main-content').prepend(errorAlert);
+                    
+                    // Auto-hide the error message after 5 seconds
+                    setTimeout(() => {
+                        errorAlert.remove();
+                    }, 5000);
+                }
+            } catch (error) {
+                console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                console.error("❌ EXCEPTION IN CHECK-OUT PROCESS");
+                console.error("Error Type:", error.name);
+                console.error("Error Message:", error.message);
+                console.error("Error Stack:", error.stack);
+                console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                
+                // Restore button state
+                const originalButtonText = confirmCheckOutButton.innerHTML;
+                confirmCheckOutButton.innerHTML = originalButtonText;
+                confirmCheckOutButton.disabled = false;
+                
+                alert(`Error processing check-out: ${error.message}`);
+            }
+        }
+        
         // Function to fetch visitor details and show buttons
         async function fetchVisitorDetailsAndShowActions(visitorId) {
             console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -368,8 +471,7 @@
         // Event listener for the Confirm Check-out button
         confirmCheckOutButton.addEventListener('click', () => {
             if (currentVisitorId) {
-                document.getElementById('visitor_id').value = currentVisitorId;
-                document.getElementById('check_out_form').submit();
+                processCheckOut(currentVisitorId);
             } else {
                 alert("No visitor selected for check-out.");
             }
