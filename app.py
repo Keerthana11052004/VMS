@@ -40,6 +40,12 @@ from threading import Thread
 import atexit
 
 
+# Helper function to get URL prefix from config
+def get_url_prefix():
+    return app.config.get('URL_PREFIX', '/vms')
+
+
+
 def _ensure_dir(path):
     try:
         os.makedirs(path, exist_ok=True)
@@ -111,8 +117,13 @@ IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-app = Flask(__name__, static_url_path='/vms/static')
+app = Flask(__name__)
 app.config.from_object(Config)
+# Set APPLICATION_ROOT to handle URL prefix
+url_prefix = app.config.get('URL_PREFIX', '/vms')
+app.config['APPLICATION_ROOT'] = url_prefix
+# Set static URL path dynamically based on URL_PREFIX
+app.static_url_path = f'{url_prefix}/static'
 # Disable debug by default; allow enabling via FLASK_DEBUG env
 app.debug = bool(os.environ.get('FLASK_DEBUG', '0').lower() in ['1', 'true'])
 app.config['DEBUG'] = app.debug
@@ -484,9 +495,10 @@ def load_user(user_id):
 
 @app.before_request
 def adjust_script_root():
-    # This tells Flask that it's being served under /cms
-    if request.path.startswith('/vms'):
-        request.environ['SCRIPT_NAME'] = '/vms'
+    # This tells Flask that it's being served under the configured prefix
+    current_prefix = app.config.get('APPLICATION_ROOT', '/vms')
+    if request.path.startswith(current_prefix):
+        request.environ['SCRIPT_NAME'] = current_prefix
 
 
 @app.after_request
@@ -507,7 +519,7 @@ def _generate_captcha_text(length=6):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
-@app.route('/vms/captcha')
+@app.route(get_url_prefix() + '/captcha')
 @rate_limit(limit=60, window=60, name='captcha')
 def captcha_image():
     # Generate captcha text and store with TTL
@@ -565,7 +577,7 @@ def captcha_image():
     return send_file(bio, mimetype='image/png')
 
 
-@app.route('/vms/verify_otp', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/verify_otp', methods=['GET', 'POST'])
 @rate_limit(limit=10, window=60, name='verify_otp')
 def verify_otp():
     # If OTP is disabled, this route should not be accessible
@@ -609,7 +621,7 @@ def verify_otp():
     return render_template('mfa_verify.html')
 
 
-@app.route('/vms/resend_otp', methods=['POST'])
+@app.route(get_url_prefix() + '/resend_otp', methods=['POST'])
 @rate_limit(limit=5, window=300, name='resend_otp')
 def resend_otp():
     # If OTP is disabled, this function should not be used
@@ -645,7 +657,7 @@ def resend_otp():
     return redirect(url_for('verify_otp', _external=True))
 
 
-@app.route('/vms/login', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/login', methods=['GET', 'POST'])
 @rate_limit(limit=10, window=60, name='login')
 def login():
     if request.method == 'POST':
@@ -715,7 +727,7 @@ def login():
 
     return render_template('login.html')
 
-@app.route('/vms/forgot_password', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/forgot_password', methods=['GET', 'POST'])
 # The following code is disabled to enforce OTP verification.
 @rate_limit(limit=5, window=300, name='forgot_password')
 def forgot_password():
@@ -752,14 +764,14 @@ def forgot_password():
 
     return render_template('forgot_password.html')
 
-@app.route('/vms/logout')
+@app.route(get_url_prefix() + '/logout')
 @login_required
 def logout():
     logout_user()
     flash('You have been logged out.', 'info')
     return redirect(url_for('login',_external=True))
 
-@app.route('/vms/verify_reset_otp', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/verify_reset_otp', methods=['GET', 'POST'])
 @rate_limit(limit=10, window=60, name='verify_reset_otp')
 def verify_reset_otp():
     # If OTP is disabled, this route should not be accessible
@@ -791,7 +803,7 @@ def verify_reset_otp():
 
     return render_template('verify_reset_otp.html')
 
-@app.route('/vms/resend_reset_otp', methods=['POST'])
+@app.route(get_url_prefix() + '/resend_reset_otp', methods=['POST'])
 @rate_limit(limit=3, window=300, name='resend_reset_otp')
 def resend_reset_otp():
     uid = session.get('reset_user_id')
@@ -825,7 +837,7 @@ def resend_reset_otp():
     
     return redirect(url_for('verify_reset_otp', _external=True))
 
-@app.route('/vms/reset_password', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/reset_password', methods=['GET', 'POST'])
 @rate_limit(limit=5, window=300, name='reset_password')
 def reset_password():
     uid = session.get('otp_verified_user_id')
@@ -880,7 +892,7 @@ def reset_password():
     
     return redirect(url_for('verify_reset_otp', _external=True))
 
-@app.route('/vms/dashboard')
+@app.route(get_url_prefix() + '/dashboard')
 @login_required
 def dashboard():
     today = datetime.now().date()
@@ -1010,7 +1022,7 @@ def dashboard():
                            exited_visitors=exited_visitors)
 
 
-@app.route('/vms/vms_master_dashboard')
+@app.route(get_url_prefix() + '/vms_master_dashboard')
 @login_required
 def admin_dashboard():
     if current_user.role != 'admin':
@@ -1055,7 +1067,7 @@ def admin_dashboard():
                            exited_visitors_count=exited_visitors_count,
                            recent_visitors=recent_visitors)
 
-@app.route('/vms/approval_dashboard')
+@app.route(get_url_prefix() + '/approval_dashboard')
 @login_required
 def approval_dashboard():
     if current_user.role not in ['admin', 'security', 'employee']:
@@ -1078,7 +1090,7 @@ def approval_dashboard():
 
     return render_template('approval_dashboard.html', pending_approvals=pending_approvals)
 
-@app.route('/vms/get_visitor_details/<string:visitor_id>')
+@app.route(get_url_prefix() + '/get_visitor_details/<string:visitor_id>')
 @rate_limit(limit=60, window=60, name='get_visitor_details')
 @login_required
 def get_visitor_details(visitor_id):
@@ -1208,7 +1220,7 @@ def get_visitor_details(visitor_id):
             flash('Error fetching visitor details.', 'error')
             return redirect(url_for('visitor_status', _external=True))
 
-@app.route('/vms/visitor_status', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/visitor_status', methods=['GET', 'POST'])
 @rate_limit(limit=60, window=60, name='visitor_status')
 @login_required
 def visitor_status():
@@ -1238,7 +1250,7 @@ def visitor_status():
     return render_template('visitor_status.html', visitors=visitors, start_date=start_date_str, end_date=end_date_str)
 
 
-@app.route('/vms/export_visitors_csv')
+@app.route(get_url_prefix() + '/export_visitors_csv')
 @rate_limit(limit=10, window=60, name='export_csv')
 @login_required
 def export_visitors_csv():
@@ -1279,7 +1291,7 @@ def export_visitors_csv():
                      as_attachment=True,
                      download_name='visitor_data.csv')
 
-@app.route('/vms/check_in_approval', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/check_in_approval', methods=['GET', 'POST'])
 @rate_limit(limit=60, window=60, name='check_in')
 @login_required
 def check_in_approval():
@@ -1305,7 +1317,7 @@ def check_in_approval():
                         if work_permit_file and work_permit_file.filename != '':
                             # Validate file type
                             allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-                            if '.' in work_permit_file.filename and \
+                            if work_permit_file.filename is not None and '.' in work_permit_file.filename and \
                                work_permit_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
                                 # Generate unique filename
                                 filename = f"work_permit_{visitor_id}_{work_permit_file.filename}"
@@ -1427,7 +1439,7 @@ def check_in_approval():
     return render_template('check_in_approval.html', approved_visitors=approved_visitors)
 
 
-@app.route('/vms/check_out_approval', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/check_out_approval', methods=['GET', 'POST'])
 @rate_limit(limit=60, window=60, name='check_out')
 @login_required
 def check_out_approval():
@@ -1477,7 +1489,7 @@ def check_out_approval():
     return render_template('check_out_approval.html', checked_in_visitors=checked_in_visitors)
 
 
-@app.route('/vms/user_management')
+@app.route(get_url_prefix() + '/user_management')
 @login_required
 def user_management():
     if current_user.role != 'admin':
@@ -1487,7 +1499,7 @@ def user_management():
     return render_template('user_management.html', users=users)
 
 
-@app.route('/vms/register_visitor', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/register_visitor', methods=['GET', 'POST'])
 @rate_limit(limit=20, window=60, name='register_visitor')
 @login_required
 def register_visitor():
@@ -2010,7 +2022,7 @@ VMS Team
         return render_template('register_visitor.html', employees=employees)
 
 
-@app.route('/vms/add_user', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/add_user', methods=['GET', 'POST'])
 @rate_limit(limit=20, window=60, name='add_user')
 @login_required
 def add_user():
@@ -2050,7 +2062,7 @@ def add_user():
     return render_template('add_user.html')
 
 
-@app.route('/vms/edit_user/<int:user_id>', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/edit_user/<int:user_id>', methods=['GET', 'POST'])
 @rate_limit(limit=30, window=60, name='edit_user')
 @login_required
 def edit_user(user_id):
@@ -2090,7 +2102,7 @@ def edit_user(user_id):
     return render_template('edit_user.html', user=user)
 
 
-@app.route('/vms/settings', methods=['GET', 'POST'])
+@app.route(get_url_prefix() + '/settings', methods=['GET', 'POST'])
 @rate_limit(limit=10, window=60, name='settings')
 @login_required
 def settings():
@@ -2142,7 +2154,7 @@ def settings():
     return render_template('settings.html', settings=current_settings)
 
 
-@app.route('/vms/delete_user/<int:user_id>', methods=['POST'])
+@app.route(get_url_prefix() + '/delete_user/<int:user_id>', methods=['POST'])
 @rate_limit(limit=10, window=60, name='delete_user')
 @login_required
 def delete_user(user_id):
@@ -2157,7 +2169,7 @@ def delete_user(user_id):
     return redirect(url_for('user_management',_external=True))
 
 
-@app.route('/vms/delete_visitor/<visitor_id>', methods=['POST'])
+@app.route(get_url_prefix() + '/delete_visitor/<visitor_id>', methods=['POST'])
 @rate_limit(limit=10, window=60, name='delete_visitor')
 @login_required
 def delete_visitor(visitor_id):
@@ -2201,7 +2213,7 @@ def delete_visitor(visitor_id):
     return redirect(url_for('visitor_status',_external=True))
 
 
-@app.route('/vms/display_qr_code/<string:visitor_id>')
+@app.route(get_url_prefix() + '/display_qr_code/<string:visitor_id>')
 @rate_limit(limit=30, window=60, name='display_qr')
 @login_required
 def display_qr_code(visitor_id):
@@ -2273,7 +2285,7 @@ def display_qr_code(visitor_id):
         return redirect(url_for('visitor_status',_external=True))
 
 
-@app.route('/vms/public_visitor_image/<string:visitor_id>/<string:image_type>')
+@app.route(get_url_prefix() + '/public_visitor_image/<string:visitor_id>/<string:image_type>')
 @rate_limit(limit=100, window=60, name='public_image')
 def public_visitor_image(visitor_id, image_type):
     """Public route to serve visitor images and QR codes for printing purposes"""
@@ -2355,7 +2367,7 @@ def public_visitor_image(visitor_id, image_type):
         abort(400)
 
 
-@app.route('/vms/approve_visitor/<int:visitor_id>', methods=['GET','POST'])
+@app.route(get_url_prefix() + '/approve_visitor/<int:visitor_id>', methods=['GET','POST'])
 @rate_limit(limit=20, window=60, name='approve')
 @login_required
 def approve_visitor(visitor_id):
@@ -2532,7 +2544,7 @@ This is an automated email. Please do not reply to this message.
     return redirect(url_for('approval_dashboard',_external=True))
 
 
-@app.route('/vms/reject_visitor/<int:visitor_id>', methods=['GET','POST'])
+@app.route(get_url_prefix() + '/reject_visitor/<int:visitor_id>', methods=['GET','POST'])
 @rate_limit(limit=20, window=60, name='reject')
 @login_required
 def reject_visitor(visitor_id):
@@ -2546,7 +2558,7 @@ def reject_visitor(visitor_id):
     return redirect(url_for('approval_dashboard',_external=True))
 
 
-@app.route('/vms/reject_visitor_by_qrcode/<string:visitor_id>', methods=['POST'])
+@app.route(get_url_prefix() + '/reject_visitor_by_qrcode/<string:visitor_id>', methods=['POST'])
 @login_required
 def reject_visitor_by_qrcode(visitor_id):
     if current_user.role not in ['admin', 'security']:
@@ -2567,7 +2579,7 @@ def reject_visitor_by_qrcode(visitor_id):
         return jsonify(success=False, message=f"Error rejecting visitor: {e}"), 500
 
 
-@app.route('/vms/mark_exited/<string:visitor_id>')
+@app.route(get_url_prefix() + '/mark_exited/<string:visitor_id>')
 @login_required
 def mark_exited(visitor_id):
     if current_user.role not in ['admin', 'security']:
@@ -2589,7 +2601,7 @@ def mark_exited(visitor_id):
     
     return redirect(url_for('dashboard',_external=True))
 
-@app.route('/vms/uploads/<filename>')
+@app.route(get_url_prefix() + '/uploads/<filename>')
 @rate_limit(limit=30, window=60, name='uploads')
 @login_required
 def uploaded_file(filename):
@@ -2613,7 +2625,7 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
-@app.route("/vms/")
+@app.route(get_url_prefix() + '/')
 def index():
     if current_user.is_authenticated:
         # return "<h3>logged in</h3>"
@@ -2623,7 +2635,7 @@ def index():
         return redirect(url_for('login',_external=True))
 
 # Report route for MIS reports
-@app.route('/vms/reports')
+@app.route(get_url_prefix() + '/reports')
 @login_required
 def reports():
     from sqlalchemy.orm import joinedload
@@ -2741,7 +2753,7 @@ def reports():
                            users=users)
 
 
-@app.route('/vms/reports/export_csv')
+@app.route(get_url_prefix() + '/reports/export_csv')
 @login_required
 def export_reports_csv():
     from sqlalchemy.orm import joinedload
@@ -2868,7 +2880,7 @@ def export_reports_csv():
 
 
 # Test email endpoint
-@app.route('/vms/test_email')
+@app.route(get_url_prefix() + '/test_email')
 @login_required
 def test_email():
     if current_user.role != 'admin':

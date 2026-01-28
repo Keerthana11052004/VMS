@@ -53,3 +53,6 @@ class Config:
     ENABLE_EMAIL = os.environ.get('ENABLE_EMAIL', 'true').lower() in ['true', 'on', '1']
     ENABLE_OTP = os.environ.get('ENABLE_OTP', 'true').lower() in ['true', 'on', '1']
     ENABLE_CAPTCHA = os.environ.get('ENABLE_CAPTCHA', 'true').lower() in ['true', 'on', '1']
+    
+    # URL Configuration
+    URL_PREFIX = os.environ.get('URL_PREFIX', '/vms').rstrip('/')

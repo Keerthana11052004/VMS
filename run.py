@@ -69,8 +69,17 @@ def check_database():
 
 def print_startup_info():
     """Print only the running link (clean output)."""
+    # Load environment variables to get URL_PREFIX
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        import os
+        url_prefix = os.environ.get('URL_PREFIX', '/vms')
+    except:
+        url_prefix = '/vms'
+    
     print("\n🚀 VMS Pro server is running!")
-    print("🌐 Access it at: http://localhost:5001/vms")
+    print(f"🌐 Access it at: http://localhost:5001{url_prefix}")
     print("Press Ctrl+C to stop.\n")
 
 def main():

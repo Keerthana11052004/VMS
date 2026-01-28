@@ -81,8 +81,8 @@
                             <option value="Others">Others</option>
                         </select>
                         <div class="mt-2" id="other_purpose_div" style="display: none;">
-                            <label for="other_purpose" class="form-label">Please specify the purpose:</label>
-                            <input type="text" class="form-control" id="other_purpose" name="other_purpose" placeholder="Enter the purpose of visit">
+                            <label for="other_purpose" class="form-label">Please specify the purpose: *</label>
+                            <input type="text" class="form-control" id="other_purpose" name="other_purpose" placeholder="Enter the purpose of visit" required>
                         </div>
                         <div class="mt-2" id="vendor_fields_div" style="display: none;">
                             <div class="row">
@@ -405,6 +405,8 @@ document.addEventListener('DOMContentLoaded', function() {
         var purposeSelect = document.getElementById('purpose');
         if (purposeSelect) {
             purposeSelect.addEventListener('change', togglePurposeInput);
+            // Initialize the state on page load
+            togglePurposeInput();
         }
     });
     
@@ -413,21 +415,25 @@ document.addEventListener('DOMContentLoaded', function() {
         var purposeSelect = document.getElementById('purpose');
         var otherPurposeDiv = document.getElementById('other_purpose_div');
         var vendorFieldsDiv = document.getElementById('vendor_fields_div');
+        var otherPurposeInput = document.getElementById('other_purpose');
         
-        if (purposeSelect && otherPurposeDiv && vendorFieldsDiv) {
+        if (purposeSelect && otherPurposeDiv && vendorFieldsDiv && otherPurposeInput) {
             if (purposeSelect.value === 'Others') {
                 otherPurposeDiv.style.display = 'block';
+                otherPurposeInput.required = true;  // Make the field required
                 vendorFieldsDiv.style.display = 'none';
                 // Clear vendor fields when not needed
                 document.getElementById('company_name').value = '';
                 document.getElementById('esi_insurance_no').value = '';
             } else if (purposeSelect.value === 'Vendor Service') {
                 otherPurposeDiv.style.display = 'none';
+                otherPurposeInput.required = false;  // Remove required attribute
                 vendorFieldsDiv.style.display = 'block';
                 // Clear other purpose input when not needed
                 document.getElementById('other_purpose').value = '';
             } else {
                 otherPurposeDiv.style.display = 'none';
+                otherPurposeInput.required = false;  // Remove required attribute
                 vendorFieldsDiv.style.display = 'none';
                 // Clear all additional fields when not needed
                 document.getElementById('other_purpose').value = '';

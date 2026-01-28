@@ -27,7 +27,9 @@ def create_database():
             import re
             # Pattern to extract user, password, host, port from mysql url
             pattern = r"mysql\\+mysqlconnector://([^:]+):([^@]+)@([^:/]+):?(\\d+)?/"
-            match = re.match(pattern, database_url)
+            match = None
+            if database_url:
+                match = re.match(pattern, database_url)
             if match:
                 user, password, host, port = match.groups()
                 port = port or '3306'  # default MySQL port
@@ -59,7 +61,9 @@ def create_database():
             import re
             # Pattern to extract user, password, host, port from postgresql url
             pattern = r"postgresql://([^:]+):([^@]+)@([^:/]+):?(\d+)?/"
-            match = re.match(pattern, database_url)
+            match = None
+            if database_url:
+                match = re.match(pattern, database_url)
             if match:
                 user, password, host, port = match.groups()
                 port = port or '5432'  # default PostgreSQL port
@@ -134,41 +138,38 @@ def init_database():
             
             existing_user = User.query.filter_by(email='keerthana.u@violintec.com').first()
             if not existing_user:
-                admin_user = User(
-                    employee_id='VTPL1028',
-                    email='keerthana.u@violintec.com',
-                    password_hash=generate_password_hash('Keerthu@123'),
-                    role='admin',
-                    username='keerthana',
-                    department='IT',
-                )
+                admin_user = User()
+                setattr(admin_user, 'employee_id', 'VTPL1028')
+                setattr(admin_user, 'email', 'keerthana.u@violintec.com')
+                setattr(admin_user, 'password_hash', generate_password_hash('Keerthu@123'))
+                setattr(admin_user, 'role', 'admin')
+                setattr(admin_user, 'username', 'keerthana')
+                setattr(admin_user, 'department', 'IT')
                 db.session.add(admin_user)
             
             # Add sample HOD user for testing
             existing_hod = User.query.filter_by(email='hod.it@violintec.com').first()
             if not existing_hod:
-                hod_user = User(
-                    employee_id='VTPL1029',
-                    email='hod.it@violintec.com',
-                    password_hash=generate_password_hash('Hod@123'),
-                    role='employee',
-                    username='IT HOD',
-                    department='IT',
-                    is_hod=True,
-                )
+                hod_user = User()
+                setattr(hod_user, 'employee_id', 'VTPL1029')
+                setattr(hod_user, 'email', 'hod.it@violintec.com')
+                setattr(hod_user, 'password_hash', generate_password_hash('Hod@123'))
+                setattr(hod_user, 'role', 'employee')
+                setattr(hod_user, 'username', 'IT HOD')
+                setattr(hod_user, 'department', 'IT')
+                setattr(hod_user, 'is_hod', True)
                 db.session.add(hod_user)
             
             # Add sample employee for testing
             existing_employee = User.query.filter_by(email='emp123@violintec.com').first()
             if not existing_employee:
-                employee_user = User(
-                    employee_id='VTPL1030',
-                    email='emp123@violintec.com',
-                    password_hash=generate_password_hash('Emp@123'),
-                    role='employee',
-                    username='Test Employee',
-                    department='IT',
-                )
+                employee_user = User()
+                setattr(employee_user, 'employee_id', 'VTPL1030')
+                setattr(employee_user, 'email', 'emp123@violintec.com')
+                setattr(employee_user, 'password_hash', generate_password_hash('Emp@123'))
+                setattr(employee_user, 'role', 'employee')
+                setattr(employee_user, 'username', 'Test Employee')
+                setattr(employee_user, 'department', 'IT')
                 db.session.add(employee_user)
             
             db.session.commit()
