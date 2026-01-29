@@ -41,6 +41,58 @@ import atexit
 
 
 # Helper function to get URL prefix from config
+def user_has_unit_access(user, target_unit):
+    """
+    Check if user has access to a specific unit.
+    Returns True if:
+    1. User is admin with 'all' unit assignment
+    2. User is admin with 'All Unit' assignment
+    3. User's unit matches the target unit
+    4. User is global admin (role='admin' with no specific unit restriction)
+    """
+    # Global admins (no unit restriction) can access everything
+    if user.role == 'admin' and (not user.unit or user.unit.lower() == 'all' or user.unit == 'All Unit'):
+        return True
+    
+    # Unit-specific admins can only access their assigned unit
+    if user.role == 'admin' and user.unit and target_unit:
+        return user.unit.lower() == target_unit.lower()
+    
+    # For non-admin users, check their own unit
+    if user.unit and target_unit:
+        return user.unit.lower() == target_unit.lower()
+    
+    return False
+
+
+def get_user_accessible_units(user):
+    """
+    Get list of units that the user can access.
+    Returns ['all'] for global admins, or specific unit list for unit admins.
+    """
+    if user.role == 'admin' and (not user.unit or user.unit.lower() == 'all' or user.unit == 'All Unit'):
+        return ['all']  # Can access all units
+    elif user.role == 'admin' and user.unit:
+        return [user.unit.lower()]  # Can only access assigned unit
+    else:
+        return [user.unit.lower()] if user.unit else []
+
+
+def filter_query_by_unit(query, model, user, unit_field='unit'):
+    """
+    Filter a SQLAlchemy query based on user's unit access permissions.
+    """
+    if user.role == 'admin' and (not user.unit or user.unit.lower() == 'all' or user.unit == 'All Unit'):
+        # Global admin - no filtering needed
+        return query
+    elif user.role == 'admin' and user.unit:
+        # Unit-specific admin - filter by their unit
+        return query.filter(getattr(model, unit_field) == user.unit)
+    else:
+        # Regular user - filter by their unit
+        return query.filter(getattr(model, unit_field) == user.unit)
+
+
 def get_url_prefix():
     return app.config.get('URL_PREFIX', '/vms')
 
@@ -313,6 +365,9 @@ class Visitor(db.Model):
     
     # New field for work permit certificate (for vendor services)
     work_permit_certificate = db.Column(db.String(200))  # Path to work permit certificate file
+    
+    # New field for safety measures checklist (for vendor services)
+    safety_measures_checklist = db.Column(db.String(200))  # Path to safety measures checklist file
     
     # Field for ESI/Insurance number (for vendor services)
     esi_insurance_no = db.Column(db.String(100))  # ESI/Insurance number for vendor services
@@ -899,20 +954,45 @@ def dashboard():
 
     # Get statistics based on user role
     if current_user.role == 'admin':
-        today_visitors = Visitor.query.filter(
-            db.func.date(Visitor.check_in_time) == today
-        ).count()
+        # Admin users - filter by unit access
+        if not current_user.unit or current_user.unit.lower() == 'all' or current_user.unit == 'All Unit':
+            # Global admin - can see all statistics
+            today_visitors = Visitor.query.filter(
+                db.func.date(Visitor.check_in_time) == today
+            ).count()
 
-        pending_approvals = Visitor.query.filter_by(status='pending').count()
+            pending_approvals = Visitor.query.filter_by(status='pending').count()
 
-        total_exits = Visitor.query.filter(
-            Visitor.status == 'exited',
-            db.func.date(Visitor.check_out_time) == today
-        ).count()
+            total_exits = Visitor.query.filter(
+                Visitor.status == 'exited',
+                db.func.date(Visitor.check_out_time) == today
+            ).count()
 
-        recent_visitors = Visitor.query.filter(
-            db.func.date(Visitor.from_datetime) == today
-        ).order_by(Visitor.from_datetime.desc()).limit(5).all()
+            recent_visitors = Visitor.query.filter(
+                db.func.date(Visitor.from_datetime) == today
+            ).order_by(Visitor.from_datetime.desc()).limit(5).all()
+        else:
+            # Unit-specific admin - can only see statistics from their unit
+            today_visitors = Visitor.query.filter(
+                db.func.date(Visitor.check_in_time) == today,
+                Visitor.unit == current_user.unit
+            ).count()
+
+            pending_approvals = Visitor.query.filter_by(
+                status='pending',
+                unit=current_user.unit
+            ).count()
+
+            total_exits = Visitor.query.filter(
+                Visitor.status == 'exited',
+                db.func.date(Visitor.check_out_time) == today,
+                Visitor.unit == current_user.unit
+            ).count()
+
+            recent_visitors = Visitor.query.filter(
+                db.func.date(Visitor.from_datetime) == today,
+                Visitor.unit == current_user.unit
+            ).order_by(Visitor.from_datetime.desc()).limit(5).all()
     elif current_user.role == 'security':
         today_visitors = Visitor.query.filter(
             db.or_(
@@ -1029,23 +1109,57 @@ def admin_dashboard():
         flash('Access denied!', 'error')
         return redirect(url_for('dashboard',_external=True))
 
-    # Statistics
-    total_users = User.query.count()
-    total_visitors = Visitor.query.count()
-    today = datetime.now().date()
-    today_visitors = Visitor.query.filter(db.func.date(Visitor.check_in_time) == today).count()
-    pending_approvals = Visitor.query.filter_by(status='pending').count()
-    
-    # New: Fetch counts for Approved, Rejected, Exited visitors
-    approved_visitors_count = Visitor.query.filter_by(status='approved').count()
-    rejected_visitors_count = Visitor.query.filter_by(status='rejected').count()
-    exited_visitors_count = Visitor.query.filter_by(status='exited').count()
+    # Statistics with unit filtering for admin users
+    if not current_user.unit or current_user.unit.lower() == 'all' or current_user.unit == 'All Unit':
+        # Global admin - can see all statistics
+        total_users = User.query.count()
+        total_visitors = Visitor.query.count()
+        today = datetime.now().date()
+        today_visitors = Visitor.query.filter(db.func.date(Visitor.check_in_time) == today).count()
+        pending_approvals = Visitor.query.filter_by(status='pending').count()
+        
+        # New: Fetch counts for Approved, Rejected, Exited visitors
+        approved_visitors_count = Visitor.query.filter_by(status='approved').count()
+        rejected_visitors_count = Visitor.query.filter_by(status='rejected').count()
+        exited_visitors_count = Visitor.query.filter_by(status='exited').count()
 
-    # Fetch recent visitors for today, including those registered today with 'pending' status
-    today = datetime.now(IST_TIMEZONE).date()
-    recent_visitors = Visitor.query.filter(
-        db.func.date(Visitor.from_datetime) == today
-    ).order_by(Visitor.from_datetime.desc()).limit(5).all()
+        # Fetch recent visitors for today, including those registered today with 'pending' status
+        recent_visitors = Visitor.query.filter(
+            db.func.date(Visitor.from_datetime) == today
+        ).order_by(Visitor.from_datetime.desc()).limit(5).all()
+    else:
+        # Unit-specific admin - can only see statistics from their unit
+        total_users = User.query.filter_by(unit=current_user.unit).count()
+        total_visitors = Visitor.query.filter_by(unit=current_user.unit).count()
+        today = datetime.now().date()
+        today_visitors = Visitor.query.filter(
+            db.func.date(Visitor.check_in_time) == today,
+            Visitor.unit == current_user.unit
+        ).count()
+        pending_approvals = Visitor.query.filter_by(
+            status='pending',
+            unit=current_user.unit
+        ).count()
+        
+        # New: Fetch counts for Approved, Rejected, Exited visitors
+        approved_visitors_count = Visitor.query.filter_by(
+            status='approved',
+            unit=current_user.unit
+        ).count()
+        rejected_visitors_count = Visitor.query.filter_by(
+            status='rejected',
+            unit=current_user.unit
+        ).count()
+        exited_visitors_count = Visitor.query.filter_by(
+            status='exited',
+            unit=current_user.unit
+        ).count()
+
+        # Fetch recent visitors for today, including those registered today with 'pending' status
+        recent_visitors = Visitor.query.filter(
+            db.func.date(Visitor.from_datetime) == today,
+            Visitor.unit == current_user.unit
+        ).order_by(Visitor.from_datetime.desc()).limit(5).all()
 
     # Calculate total hours visited for each visitor
     for visitor in recent_visitors:
@@ -1074,9 +1188,15 @@ def approval_dashboard():
         flash('Access denied!', 'error')
         return redirect(url_for('dashboard',_external=True))
 
-    # Get pending approvals based on user role
+    # Get pending approvals based on user role and unit access
     if current_user.role == 'admin':
-        pending_approvals = Visitor.query.filter_by(status='pending').order_by(Visitor.check_in_time.desc()).all()
+        # Admin users - filter by unit access
+        if not current_user.unit or current_user.unit.lower() == 'all' or current_user.unit == 'All Unit':
+            # Global admin - can see all pending approvals
+            pending_approvals = Visitor.query.filter_by(status='pending').order_by(Visitor.check_in_time.desc()).all()
+        else:
+            # Unit-specific admin - can only see approvals from their unit
+            pending_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
     elif current_user.role == 'security':
         pending_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
     elif current_user.is_hod and current_user.department:
@@ -1303,6 +1423,8 @@ def check_in_approval():
         visitor_id = request.form.get('visitor_id')
         work_permit_file = request.files.get('work_permit_certificate')
         work_permit_captured_image = request.form.get('work_permit_captured_image')  # Captured image from camera
+        safety_measures_file = request.files.get('safety_measures_checklist')
+        safety_measures_captured_image = request.form.get('safety_measures_captured_image')  # Captured image from camera
         if visitor_id:
             try:
                 visitor = Visitor.query.filter_by(Visitor_ID=visitor_id).first()
@@ -1311,94 +1433,215 @@ def check_in_approval():
                         flash('Access denied to check-in for this unit.', 'error')
                         return redirect(url_for('check_in_approval', _external=True))
                     
-                    # Check if purpose is 'Vendor Service' and require work permit certificate
-                    if visitor.purpose and 'Vendor Service' in visitor.purpose and not visitor.work_permit_certificate:
-                        # If work permit certificate is not provided yet, check if it's being uploaded now
-                        if work_permit_file and work_permit_file.filename != '':
-                            # Validate file type
-                            allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-                            if work_permit_file.filename is not None and '.' in work_permit_file.filename and \
-                               work_permit_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
-                                # Generate unique filename
-                                filename = f"work_permit_{visitor_id}_{work_permit_file.filename}"
-                                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                                work_permit_file.save(filepath)
-                                
-                                # Update visitor with work permit certificate path
-                                visitor.work_permit_certificate = filename
-                                db.session.commit()
-                                
-                                # Check if this is an AJAX request (JSON response needed)
-                                if request.headers.get('Content-Type', '').startswith('application/json') or \
-                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                    return jsonify({'success': True, 'message': 'Work permit certificate uploaded successfully!'})
+                    # Check if purpose is 'Vendor Service' and require both work permit certificate and safety measures checklist
+                    if visitor.purpose and 'Vendor Service' in visitor.purpose:
+                        # Check if work permit certificate is missing
+                        work_permit_missing = not visitor.work_permit_certificate
+                        # Check if safety measures checklist is missing
+                        safety_measures_missing = not visitor.safety_measures_checklist
+                        
+                        if work_permit_missing or safety_measures_missing:
+                            # Handle work permit certificate upload
+                            if work_permit_missing:
+                                if work_permit_file and work_permit_file.filename != '':
+                                    # Validate file type
+                                    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+                                    if work_permit_file.filename is not None and '.' in work_permit_file.filename and \
+                                       work_permit_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
+                                        # Generate unique filename
+                                        filename = f"work_permit_{visitor_id}_{work_permit_file.filename}"
+                                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                        work_permit_file.save(filepath)
+                                        
+                                        # Update visitor with work permit certificate path
+                                        visitor.work_permit_certificate = filename
+                                        db.session.commit()
+                                        
+                                        # Check if safety measures checklist is also uploaded now
+                                        if not safety_measures_missing or (safety_measures_file and safety_measures_file.filename != '') or safety_measures_captured_image:
+                                            # Both documents are now uploaded
+                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully!'})
+                                            else:
+                                                flash('Work permit certificate and safety measures checklist uploaded successfully!', 'success')
+                                        else:
+                                            # Only work permit certificate uploaded, safety measures still needed
+                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                return jsonify({'success': True, 'message': 'Work permit certificate uploaded successfully! Please also upload the safety measures checklist.'})
+                                            else:
+                                                flash('Work permit certificate uploaded successfully! Please also upload the safety measures checklist.', 'info')
+                                    else:
+                                        if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                            return jsonify({'success': False, 'message': 'Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.'})
+                                        else:
+                                            flash('Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.', 'error')
+                                            return redirect(url_for('check_in_approval', _external=True))
+                                elif work_permit_captured_image:
+                                    # Process captured image from camera
+                                    import base64
+                                    try:
+                                        # Extract the image data from the data URL
+                                        if work_permit_captured_image.startswith('data:image'):
+                                            # Extract the image format and data
+                                            header, encoded = work_permit_captured_image.split(',', 1)
+                                            image_format = header.split('/')[1].split(';')[0]
+                                            
+                                            # Decode the base64 image data
+                                            image_data = base64.b64decode(encoded)
+                                            
+                                            # Generate a unique filename
+                                            filename = f"work_permit_{visitor_id}_{datetime.now(IST_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.jpg"
+                                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                            
+                                            # Save the image
+                                            with open(filepath, 'wb') as f:
+                                                f.write(image_data)
+                                            
+                                            # Update visitor with work permit certificate path
+                                            visitor.work_permit_certificate = filename
+                                            db.session.commit()
+                                            
+                                            # Check if safety measures checklist is also uploaded now
+                                            if not safety_measures_missing or (safety_measures_file and safety_measures_file.filename != '') or safety_measures_captured_image:
+                                                # Both documents are now uploaded
+                                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                    return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully!'})
+                                                else:
+                                                    flash('Work permit certificate and safety measures checklist uploaded successfully!', 'success')
+                                            else:
+                                                # Only work permit certificate uploaded, safety measures still needed
+                                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                    return jsonify({'success': True, 'message': 'Work permit certificate uploaded successfully! Please also upload the safety measures checklist.'})
+                                                else:
+                                                    flash('Work permit certificate uploaded successfully! Please also upload the safety measures checklist.', 'info')
+                                        else:
+                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                return jsonify({'success': False, 'message': 'Invalid image format received from camera.'})
+                                            else:
+                                                flash('Invalid image format received from camera.', 'error')
+                                                return redirect(url_for('check_in_approval', _external=True))
+                                    except Exception as e:
+                                        logging.error(f"Error processing captured image: {e}")
+                                        if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                            return jsonify({'success': False, 'message': 'Error processing captured image.'})
+                                        else:
+                                            flash('Error processing captured image.', 'error')
+                                            return redirect(url_for('check_in_approval', _external=True))
                                 else:
-                                    flash('Work permit certificate uploaded successfully!', 'success')
-                            else:
-                                # Check if this is an AJAX request
-                                if request.headers.get('Content-Type', '').startswith('application/json') or \
-                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                    return jsonify({'success': False, 'message': 'Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.'})
-                                else:
-                                    flash('Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.', 'error')
-                                    return redirect(url_for('check_in_approval', _external=True))
-                        elif work_permit_captured_image:
-                            # Process captured image from camera
-                            import base64
-                            try:
-                                # Extract the image data from the data URL
-                                if work_permit_captured_image.startswith('data:image'):
-                                    # Extract the image format and data
-                                    header, encoded = work_permit_captured_image.split(',', 1)
-                                    image_format = header.split('/')[1].split(';')[0]
-                                    
-                                    # Decode the base64 image data
-                                    image_data = base64.b64decode(encoded)
-                                    
-                                    # Generate a unique filename
-                                    filename = f"work_permit_{visitor_id}_{datetime.now(IST_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.jpg"
-                                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                                    
-                                    # Save the image
-                                    with open(filepath, 'wb') as f:
-                                        f.write(image_data)
-                                    
-                                    # Update visitor with work permit certificate path
-                                    visitor.work_permit_certificate = filename
-                                    db.session.commit()
-                                    
-                                    # Check if this is an AJAX request (JSON response needed)
                                     if request.headers.get('Content-Type', '').startswith('application/json') or \
                                        request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                        return jsonify({'success': True, 'message': 'Work permit certificate uploaded successfully!'})
+                                        return jsonify({'success': False, 'message': 'Work permit certificate required for Vendor Service visitors. Please upload the certificate.'})
                                     else:
-                                        flash('Work permit certificate uploaded successfully!', 'success')
+                                        flash('Work permit certificate required for Vendor Service visitors. Please upload the certificate.', 'error')
+                                        return render_template('check_in_approval.html', approved_visitors=[visitor])
+                            
+                            # Handle safety measures checklist upload
+                            if safety_measures_missing:
+                                if safety_measures_file and safety_measures_file.filename != '':
+                                    # Validate file type
+                                    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+                                    if safety_measures_file.filename is not None and '.' in safety_measures_file.filename and \
+                                       safety_measures_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
+                                        # Generate unique filename
+                                        filename = f"safety_measures_{visitor_id}_{safety_measures_file.filename}"
+                                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                        safety_measures_file.save(filepath)
+                                        
+                                        # Update visitor with safety measures checklist path
+                                        visitor.safety_measures_checklist = filename
+                                        db.session.commit()
+                                        
+                                        # Check if work permit certificate is also uploaded now
+                                        if not work_permit_missing or (work_permit_file and work_permit_file.filename != '') or work_permit_captured_image:
+                                            # Both documents are now uploaded
+                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully!'})
+                                            else:
+                                                flash('Work permit certificate and safety measures checklist uploaded successfully!', 'success')
+                                        else:
+                                            # Only safety measures checklist uploaded, work permit still needed
+                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                return jsonify({'success': True, 'message': 'Safety measures checklist uploaded successfully! Please also upload the work permit certificate.'})
+                                            else:
+                                                flash('Safety measures checklist uploaded successfully! Please also upload the work permit certificate.', 'info')
+                                    else:
+                                        if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                            return jsonify({'success': False, 'message': 'Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for safety measures checklist.'})
+                                        else:
+                                            flash('Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for safety measures checklist.', 'error')
+                                            return redirect(url_for('check_in_approval', _external=True))
+                                elif safety_measures_captured_image:
+                                    # Process captured image from camera
+                                    import base64
+                                    try:
+                                        # Extract the image data from the data URL
+                                        if safety_measures_captured_image.startswith('data:image'):
+                                            # Extract the image format and data
+                                            header, encoded = safety_measures_captured_image.split(',', 1)
+                                            image_format = header.split('/')[1].split(';')[0]
+                                            
+                                            # Decode the base64 image data
+                                            image_data = base64.b64decode(encoded)
+                                            
+                                            # Generate a unique filename
+                                            filename = f"safety_measures_{visitor_id}_{datetime.now(IST_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.jpg"
+                                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                            
+                                            # Save the image
+                                            with open(filepath, 'wb') as f:
+                                                f.write(image_data)
+                                            
+                                            # Update visitor with safety measures checklist path
+                                            visitor.safety_measures_checklist = filename
+                                            db.session.commit()
+                                            
+                                            # Check if work permit certificate is also uploaded now
+                                            if not work_permit_missing or (work_permit_file and work_permit_file.filename != '') or work_permit_captured_image:
+                                                # Both documents are now uploaded
+                                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                    return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully!'})
+                                                else:
+                                                    flash('Work permit certificate and safety measures checklist uploaded successfully!', 'success')
+                                            else:
+                                                # Only safety measures checklist uploaded, work permit still needed
+                                                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                    return jsonify({'success': True, 'message': 'Safety measures checklist uploaded successfully! Please also upload the work permit certificate.'})
+                                                else:
+                                                    flash('Safety measures checklist uploaded successfully! Please also upload the work permit certificate.', 'info')
+                                        else:
+                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                                return jsonify({'success': False, 'message': 'Invalid image format received from camera for safety measures checklist.'})
+                                            else:
+                                                flash('Invalid image format received from camera for safety measures checklist.', 'error')
+                                                return redirect(url_for('check_in_approval', _external=True))
+                                    except Exception as e:
+                                        logging.error(f"Error processing captured safety measures image: {e}")
+                                        if request.headers.get('Content-Type', '').startswith('application/json') or \
+                                           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                                            return jsonify({'success': False, 'message': 'Error processing captured safety measures image.'})
+                                        else:
+                                            flash('Error processing captured safety measures image.', 'error')
+                                            return redirect(url_for('check_in_approval', _external=True))
                                 else:
-                                    # Check if this is an AJAX request
                                     if request.headers.get('Content-Type', '').startswith('application/json') or \
                                        request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                        return jsonify({'success': False, 'message': 'Invalid image format received from camera.'})
+                                        return jsonify({'success': False, 'message': 'Safety measures checklist required for Vendor Service visitors. Please upload the checklist.'})
                                     else:
-                                        flash('Invalid image format received from camera.', 'error')
-                                        return redirect(url_for('check_in_approval', _external=True))
-                            except Exception as e:
-                                logging.error(f"Error processing captured image: {e}")
-                                # Check if this is an AJAX request
-                                if request.headers.get('Content-Type', '').startswith('application/json') or \
-                                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                    return jsonify({'success': False, 'message': 'Error processing captured image.'})
-                                else:
-                                    flash('Error processing captured image.', 'error')
-                                    return redirect(url_for('check_in_approval', _external=True))
-                        else:
-                            # Check if this is an AJAX request
-                            if request.headers.get('Content-Type', '').startswith('application/json') or \
-                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                return jsonify({'success': False, 'message': 'Work permit certificate required for Vendor Service visitors. Please upload the certificate.'})
-                            else:
-                                # Show form to upload work permit certificate
-                                flash('Work permit certificate required for Vendor Service visitors. Please upload the certificate.', 'error')
-                                return render_template('check_in_approval.html', approved_visitors=[visitor])
+                                        flash('Safety measures checklist required for Vendor Service visitors. Please upload the checklist.', 'error')
+                                        return render_template('check_in_approval.html', approved_visitors=[visitor])
                     
                     # Only allow check-in if status is 'approved'
                     if visitor.status == 'approved':
@@ -1495,7 +1738,18 @@ def user_management():
     if current_user.role != 'admin':
         flash('Access denied!', 'error')
         return redirect(url_for('dashboard',_external=True))
-    users = User.query.all()
+    
+    # Filter users based on current user's unit access
+    if current_user.role == 'admin' and (not current_user.unit or current_user.unit.lower() == 'all' or current_user.unit == 'All Unit'):
+        # Global admin - can see all users
+        users = User.query.all()
+    elif current_user.role == 'admin' and current_user.unit:
+        # Unit-specific admin - can only see users from their unit
+        users = User.query.filter_by(unit=current_user.unit).all()
+    else:
+        # Regular user - can only see users from their unit
+        users = User.query.filter_by(unit=current_user.unit).all()
+    
     return render_template('user_management.html', users=users)
 
 
@@ -1785,7 +2039,7 @@ def register_visitor():
                 html_body = f"""
             <p>Dear {h(visitor.name)},</p>
             <p>
-            Greeting from Vilion Technologies Pvt Ltd!\n<br>
+            Greeting from Violin Technologies Pvt Ltd!\n<br>
             Your visitor registration is successful. Below are your details:<br>
             </p>
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
@@ -1833,7 +2087,7 @@ def register_visitor():
                     <p>Thank you for registering your visit to our organization. Your details have been successfully submitted and are currently awaiting approval from the concerned department.</p>
                     <p>You will receive a confirmation email once your visit request has been reviewed and approved. Please wait for further communication before arriving at our premises.</p>
                     <p>For any urgent inquiries or assistance, please feel free to contact our team</p>
-                    <p>Best regards,<br>Vilion Technologies Pvt Ltd</p>
+                    <p>Best regards,<br>Violin Technologies Pvt Ltd</p>
             """
                 # Send email in background
                 send_email(visitor.email, subject, body, html_body=html_body, visitor=visitor, async_mode=True)
@@ -2392,7 +2646,7 @@ def approve_visitor(visitor_id):
     # Send email to visitor with details and QR code
     try:
         if visitor.email:
-            subject = "Your Visitor Registration Approved - Vilion Technologies Pvt Ltd"
+            subject = "Your Visitor Registration Approved - Violin Technologies Pvt Ltd"
             
             # Ensure QR code exists, generate if missing
             if not visitor.qr_code:
@@ -2430,7 +2684,7 @@ def approve_visitor(visitor_id):
                 <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
                     <p style="font-size: 16px;">Dear <strong>{visitor.name}</strong>,</p>
                     <p style="font-size: 16px; line-height: 1.6;">
-                        Greeting from <strong>Vilion Technologies Pvt Ltd</strong>!<br><br>
+                        Greeting from <strong>Violin Technologies Pvt Ltd</strong>!<br><br>
                         Your visitor registration has been <strong style="color: #28a745;">APPROVED</strong>. 
                         You can now proceed with your visit.
                     </p>
@@ -2484,7 +2738,7 @@ def approve_visitor(visitor_id):
                     <p style="margin-top: 30px; font-size: 16px;">We look forward to your visit!</p>
                     <p style="font-size: 16px;">
                         Best regards,<br>
-                        <strong>Vilion Technologies Pvt Ltd</strong>
+                        <strong>Violin Technologies Pvt Ltd</strong>
                     </p>
                 </div>
                 <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
@@ -2500,7 +2754,7 @@ def approve_visitor(visitor_id):
 
 Dear {visitor.name},
 
-Greeting from Vilion Technologies Pvt Ltd!
+Greeting from Violin Technologies Pvt Ltd!
 
 Your visitor registration has been APPROVED. You can now proceed with your visit.
 
@@ -2523,7 +2777,7 @@ IMPORTANT INSTRUCTIONS:
 We look forward to your visit!
 
 Best regards,
-Vilion Technologies Pvt Ltd
+Violin Technologies Pvt Ltd
 
 ════════════════════════════════════════════════════════════
 This is an automated email. Please do not reply to this message.
@@ -2532,6 +2786,94 @@ This is an automated email. Please do not reply to this message.
 
             # Send email in background
             send_email(visitor.email, subject, plain_body, html_body=html_body, embedded_image_path=qr_code_path, embedded_image_cid=qr_cid, async_mode=True)
+            
+            # Send notification email to the host (employee being visited)
+            try:
+                if host and host.email:
+                    host_notification_subject = f"Visitor Registration Approved: {visitor.name} is visiting you"
+                    host_notification_html_body = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                        <div style="background-color: #28a745; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+                            <h2 style="margin: 0;">Visitor Registration Approved</h2>
+                        </div>
+                        <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                            <p style="font-size: 16px;">Dear <strong>{host.username}</strong>,</p>
+                            <p style="font-size: 16px; line-height: 1.6;">
+                                Good news! A visitor has been approved to meet you at <strong>Violin Technologies Pvt Ltd</strong>.
+                            </p>
+                            
+                            <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
+                                <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                                <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                                <p style="margin: 5px 0;"><strong>Email:</strong> {visitor.email or 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Mobile:</strong> {visitor.mobile}</p>
+                                <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose or 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Visit Date:</strong> {visitor.from_datetime.strftime('%b %d, %Y %I:%M %p') if visitor.from_datetime else 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Company:</strong> {visitor.company or 'N/A'}</p>
+                            </div>
+                            
+                            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                                <p style="font-size: 16px; color: #666;">
+                                    <strong>Next Steps:</strong>
+                                </p>
+                                <ul style="color: #666; font-size: 14px; line-height: 1.8;">
+                                        <li>The visitor has been notified and will be arriving according to the scheduled time</li>
+                                        <li>Please coordinate with the visitor as needed for your meeting</li>
+                                        <li>The visitor will check in at the reception using their QR code</li>
+                                    </ul>
+                            </div>
+                            
+                            <p style="margin-top: 30px; font-size: 16px;">Please prepare for the visit accordingly.</p>
+                            <p style="font-size: 16px;">
+                                Best regards,<br>
+                                <strong>Violin Technologies Pvt Ltd</strong>
+                            </p>
+                        </div>
+                        <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+                            <p>This is an automated email. Please do not reply to this message.</p>
+                        </div>
+                    </div>
+                    """
+                    
+                    host_notification_plain_body = f"""
+════════════════════════════════════════════════════════════
+    VISITOR REGISTRATION APPROVED - YOU ARE BEING VISITED
+════════════════════════════════════════════════════════════
+
+Dear {host.username},
+
+Good news! A visitor has been approved to meet you at Violin Technologies Pvt Ltd.
+
+VISITOR DETAILS:
+Name: {visitor.name}
+Visitor ID: {visitor.Visitor_ID}
+Email: {visitor.email or 'N/A'}
+Mobile: {visitor.mobile}
+Purpose: {visitor.purpose or 'N/A'}
+Visit Date: {visitor.from_datetime.strftime('%b %d, %Y %I:%M %p') if visitor.from_datetime else 'N/A'}
+Company: {visitor.company or 'N/A'}
+
+NEXT STEPS:
+• The visitor has been notified and will be arriving according to the scheduled time
+• Please coordinate with the visitor as needed for your meeting
+• The visitor will check in at the reception using their QR code
+
+Please prepare for the visit accordingly.
+
+Best regards,
+Violin Technologies Pvt Ltd
+
+════════════════════════════════════════════════════════════
+This is an automated email. Please do not reply to this message.
+════════════════════════════════════════════════════════════
+                    """
+                    
+                    # Send notification email to the host
+                    send_email(host.email, host_notification_subject, host_notification_plain_body, html_body=host_notification_html_body, async_mode=True)
+            except Exception as e:
+                logging.error(f"Error sending approval notification email to host: {e}")
+                # Don't flash an error to the admin as this is a secondary notification
+            
             # Email status not checked due to async mode
         else:
             flash("Visitor email address is missing, cannot send approval email.", 'warning')

@@ -124,11 +124,7 @@ def init_database():
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
-            # Drop all existing tables to ensure the new schema is applied
-            db.drop_all()
-            print("✅ All database tables dropped successfully!")
-            
-            # Create all tables with the new schema
+            # Create all tables with the new schema (without dropping existing data)
             db.create_all()
             print("✅ Database tables created successfully with updated schema!")
 
@@ -136,7 +132,7 @@ def init_database():
             from werkzeug.security import generate_password_hash
             from app import User  # Import User model here
             
-            existing_user = User.query.filter_by(email='keerthana.u@violintec.com').first()
+            existing_user = User.query.filter_by(employee_id='VTPL1028').first()
             if not existing_user:
                 admin_user = User()
                 setattr(admin_user, 'employee_id', 'VTPL1028')
@@ -148,7 +144,7 @@ def init_database():
                 db.session.add(admin_user)
             
             # Add sample HOD user for testing
-            existing_hod = User.query.filter_by(email='hod.it@violintec.com').first()
+            existing_hod = User.query.filter_by(employee_id='VTPL1029').first()
             if not existing_hod:
                 hod_user = User()
                 setattr(hod_user, 'employee_id', 'VTPL1029')
@@ -161,7 +157,7 @@ def init_database():
                 db.session.add(hod_user)
             
             # Add sample employee for testing
-            existing_employee = User.query.filter_by(email='emp123@violintec.com').first()
+            existing_employee = User.query.filter_by(employee_id='VTPL1030').first()
             if not existing_employee:
                 employee_user = User()
                 setattr(employee_user, 'employee_id', 'VTPL1030')
@@ -194,7 +190,6 @@ def main():
     if not create_database():
         sys.exit(1)
 
-    # Removed drop_all_tables() calls to allow init_database() to create tables on first run
     if not init_database():
         sys.exit(1)
 

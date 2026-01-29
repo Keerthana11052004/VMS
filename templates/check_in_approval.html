@@ -34,6 +34,13 @@
                 <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB. <span class="text-danger">*</span> Required for vendor service visitors</small>
             </div>
             
+            <!-- Safety Measures Checklist Upload -->
+            <div class="form-group">
+                <label for="safety_measures_checklist" class="form-label">Upload Safety Measures Checklist: <span class="text-danger">*</span></label>
+                <input type="file" class="form-control" id="safety_measures_checklist" name="safety_measures_checklist" accept=".png,.jpg,.jpeg,.gif,.pdf" required>
+                <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB. <span class="text-danger">*</span> Required for vendor service visitors</small>
+            </div>
+            
             <!-- Camera Option -->
             <div class="form-group">
                 <label class="form-label">Or take a photo of the document:</label>
@@ -44,6 +51,19 @@
                     <button type="button" id="capture-workPermit-photo" class="btn btn-outline-success mb-2" style="display: none;">Capture Photo</button>
                     <img id="workPermitPreview" style="display: none; max-width: 100%; margin-top: 10px;" alt="Captured document preview">
                     <input type="hidden" id="workPermitCapturedImage" name="work_permit_captured_image">
+                </div>
+            </div>
+            
+            <!-- Safety Measures Checklist Camera Option -->
+            <div class="form-group">
+                <label class="form-label">Or take a photo of the Safety Measures Checklist:</label>
+                <div class="d-flex flex-column align-items-center">
+                    <video id="safetyMeasuresVideo" width="320" height="240" style="border: 1px solid #ddd; margin-bottom: 10px; display: none;"></video>
+                    <button type="button" id="start-safetyMeasures-camera" class="btn btn-outline-primary mb-2">Start Camera</button>
+                    <canvas id="safetyMeasuresCanvas" width="320" height="240" style="display: none;"></canvas>
+                    <button type="button" id="capture-safetyMeasures-photo" class="btn btn-outline-success mb-2" style="display: none;">Capture Photo</button>
+                    <img id="safetyMeasuresPreview" style="display: none; max-width: 100%; margin-top: 10px;" alt="Captured safety measures checklist preview">
+                    <input type="hidden" id="safetyMeasuresCapturedImage" name="safety_measures_captured_image">
                 </div>
             </div>
             
@@ -449,18 +469,39 @@
         const workPermitCapturedImage = document.getElementById('workPermitCapturedImage');
         let workPermitStream = null;
         
+        // Camera functionality for safety measures checklist
+        const safetyMeasuresVideo = document.getElementById('safetyMeasuresVideo');
+        const safetyMeasuresCanvas = document.getElementById('safetyMeasuresCanvas');
+        const startSafetyMeasuresCameraBtn = document.getElementById('start-safetyMeasures-camera');
+        const captureSafetyMeasuresBtn = document.getElementById('capture-safetyMeasures-photo');
+        const safetyMeasuresPreview = document.getElementById('safetyMeasuresPreview');
+        const safetyMeasuresCapturedImage = document.getElementById('safetyMeasuresCapturedImage');
+        let safetyMeasuresStream = null;
+        
         // Start camera for work permit document
         if (startWorkPermitCameraBtn) {
             startWorkPermitCameraBtn.addEventListener('click', async () => {
                 try {
+                    // First, stop any existing stream to avoid conflicts
+                    if (workPermitStream) {
+                        workPermitStream.getTracks().forEach(track => track.stop());
+                    }
+                    
                     workPermitStream = await navigator.mediaDevices.getUserMedia({ video: true });
                     workPermitVideo.srcObject = workPermitStream;
+                    
+                    // Ensure the video element is visible and playing
                     workPermitVideo.style.display = 'block';
+                    workPermitVideo.play().catch(error => {
+                        console.warn('Auto-play prevented:', error);
+                        // If autoplay is prevented, we'll handle it by showing the video when user interacts
+                    });
+                    
                     startWorkPermitCameraBtn.style.display = 'none';
                     captureWorkPermitBtn.style.display = 'block';
                 } catch (err) {
                     console.error('Error accessing camera:', err);
-                    alert('Could not access the camera. Please ensure camera permissions are granted.');
+                    alert('Could not access the camera. Please ensure camera permissions are granted and that you are using HTTPS or localhost.');
                 }
             });
         }
@@ -468,26 +509,96 @@
         // Capture photo of work permit document
         if (captureWorkPermitBtn) {
             captureWorkPermitBtn.addEventListener('click', () => {
-                workPermitCanvas.getContext('2d').drawImage(workPermitVideo, 0, 0, workPermitCanvas.width, workPermitCanvas.height);
+                // Set canvas dimensions to match video
+                workPermitCanvas.width = workPermitVideo.videoWidth;
+                workPermitCanvas.height = workPermitVideo.videoHeight;
                 
-                // Convert captured image to data URL
-                const imageDataUrl = workPermitCanvas.toDataURL('image/jpeg', 0.8);
-                workPermitPreview.src = imageDataUrl;
-                workPermitPreview.style.display = 'block';
-                
-                // Store the captured image data in the hidden input
-                workPermitCapturedImage.value = imageDataUrl;
-                
-                // Stop the camera stream
-                if (workPermitStream) {
-                    workPermitStream.getTracks().forEach(track => track.stop());
-                    workPermitStream = null;
+                // Add a small delay to ensure the video frame is rendered
+                setTimeout(() => {
+                    // Draw the current frame from video to canvas
+                    workPermitCanvas.getContext('2d').drawImage(workPermitVideo, 0, 0, workPermitCanvas.width, workPermitCanvas.height);
+                    
+                    // Convert captured image to data URL
+                    const imageDataUrl = workPermitCanvas.toDataURL('image/jpeg', 0.8);
+                    workPermitPreview.src = imageDataUrl;
+                    workPermitPreview.style.display = 'block';
+                    
+                    // Store the captured image data in the hidden input
+                    workPermitCapturedImage.value = imageDataUrl;
+                    
+                    // Stop the camera stream
+                    if (workPermitStream) {
+                        workPermitStream.getTracks().forEach(track => track.stop());
+                        workPermitStream = null;
+                    }
+                    workPermitVideo.style.display = 'none';
+                    captureWorkPermitBtn.style.display = 'none';
+                    startWorkPermitCameraBtn.style.display = 'block';
+                    
+                    alert('Photo captured successfully!');
+                }, 100); // Small delay to ensure video frame is rendered
+            });
+        }
+        
+        // Start camera for safety measures checklist
+        if (startSafetyMeasuresCameraBtn) {
+            startSafetyMeasuresCameraBtn.addEventListener('click', async () => {
+                try {
+                    // First, stop any existing stream to avoid conflicts
+                    if (safetyMeasuresStream) {
+                        safetyMeasuresStream.getTracks().forEach(track => track.stop());
+                    }
+                    
+                    safetyMeasuresStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    safetyMeasuresVideo.srcObject = safetyMeasuresStream;
+                    
+                    // Ensure the video element is visible and playing
+                    safetyMeasuresVideo.style.display = 'block';
+                    safetyMeasuresVideo.play().catch(error => {
+                        console.warn('Auto-play prevented:', error);
+                        // If autoplay is prevented, we'll handle it by showing the video when user interacts
+                    });
+                    
+                    startSafetyMeasuresCameraBtn.style.display = 'none';
+                    captureSafetyMeasuresBtn.style.display = 'block';
+                } catch (err) {
+                    console.error('Error accessing camera:', err);
+                    alert('Could not access the camera. Please ensure camera permissions are granted and that you are using HTTPS or localhost.');
                 }
-                workPermitVideo.style.display = 'none';
-                captureWorkPermitBtn.style.display = 'none';
-                startWorkPermitCameraBtn.style.display = 'block';
+            });
+        }
+        
+        // Capture photo of safety measures checklist
+        if (captureSafetyMeasuresBtn) {
+            captureSafetyMeasuresBtn.addEventListener('click', () => {
+                // Set canvas dimensions to match video
+                safetyMeasuresCanvas.width = safetyMeasuresVideo.videoWidth;
+                safetyMeasuresCanvas.height = safetyMeasuresVideo.videoHeight;
                 
-                alert('Photo captured successfully!');
+                // Add a small delay to ensure the video frame is rendered
+                setTimeout(() => {
+                    // Draw the current frame from video to canvas
+                    safetyMeasuresCanvas.getContext('2d').drawImage(safetyMeasuresVideo, 0, 0, safetyMeasuresCanvas.width, safetyMeasuresCanvas.height);
+                    
+                    // Convert captured image to data URL
+                    const imageDataUrl = safetyMeasuresCanvas.toDataURL('image/jpeg', 0.8);
+                    safetyMeasuresPreview.src = imageDataUrl;
+                    safetyMeasuresPreview.style.display = 'block';
+                    
+                    // Store the captured image data in the hidden input
+                    safetyMeasuresCapturedImage.value = imageDataUrl;
+                    
+                    // Stop the camera stream
+                    if (safetyMeasuresStream) {
+                        safetyMeasuresStream.getTracks().forEach(track => track.stop());
+                        safetyMeasuresStream = null;
+                    }
+                    safetyMeasuresVideo.style.display = 'none';
+                    captureSafetyMeasuresBtn.style.display = 'none';
+                    startSafetyMeasuresCameraBtn.style.display = 'block';
+                    
+                    alert('Safety measures checklist photo captured successfully!');
+                }, 100); // Small delay to ensure video frame is rendered
             });
         }
         

@@ -96,10 +96,62 @@ def main():
         from init_db import init_database, drop_all_tables
 
         with app.app_context():
-            # Drop all tables and recreate them to ensure schema consistency
-            drop_all_tables()
-            db.create_all()
-            init_database()
+            # Check if tables exist, only create them if they don't exist (preserve existing data)
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            
+            if not tables:  # If no tables exist, initialize fresh database
+                print("📊 No existing tables found, initializing database with default users...")
+                db.create_all()
+                init_database()
+            else:
+                print("📊 Existing tables found, preserving data...")
+                # Just create any missing tables without dropping existing ones
+                db.create_all()
+                # Only add default users if they don't already exist
+                from app import User
+                from werkzeug.security import generate_password_hash
+                
+                # Check and add default users only if they don't exist
+                admin_exists = User.query.filter_by(employee_id='VTPL1028').first()
+                if not admin_exists:
+                    admin_user = User()
+                    admin_user.employee_id = 'VTPL1028'
+                    admin_user.email = 'keerthana.u@violintec.com'
+                    admin_user.password_hash = generate_password_hash('Keerthu@123')
+                    admin_user.role = 'admin'
+                    admin_user.username = 'keerthana'
+                    admin_user.department = 'IT'
+                    db.session.add(admin_user)
+                    print("👤 Added default admin user")
+
+                hod_exists = User.query.filter_by(employee_id='VTPL1029').first()
+                if not hod_exists:
+                    hod_user = User()
+                    hod_user.employee_id = 'VTPL1029'
+                    hod_user.email = 'hod.it@violintec.com'
+                    hod_user.password_hash = generate_password_hash('Hod@123')
+                    hod_user.role = 'employee'
+                    hod_user.username = 'IT HOD'
+                    hod_user.department = 'IT'
+                    hod_user.is_hod = True
+                    db.session.add(hod_user)
+                    print("👤 Added default HOD user")
+
+                employee_exists = User.query.filter_by(employee_id='VTPL1030').first()
+                if not employee_exists:
+                    employee_user = User()
+                    employee_user.employee_id = 'VTPL1030'
+                    employee_user.email = 'emp123@violintec.com'
+                    employee_user.password_hash = generate_password_hash('Emp@123')
+                    employee_user.role = 'employee'
+                    employee_user.username = 'Test Employee'
+                    employee_user.department = 'IT'
+                    db.session.add(employee_user)
+                    print("👤 Added default employee user")
+                
+                db.session.commit()
 
         print_startup_info()
 
