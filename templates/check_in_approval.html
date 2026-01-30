@@ -22,53 +22,63 @@
             </div>
         </div>
 
-        <!-- Work Permit Certificate Upload Form for Vendor Services -->
-        <div id="work-permit-upload" style="display:none; margin-top: 20px; padding: 20px; border: 2px dashed #007bff; border-radius: 10px; background-color: #f8f9ff;">
-            <h5 class="text-center mb-3" style="color: #007bff;">Work Permit Certificate Required</h5>
-            <p class="text-center mb-3">This visitor has purpose "Vendor Service" and requires a work permit certificate.</p>
+        <!-- Work Permit Certificate Upload Section -->
+        <div id="work-permit-upload-section" style="display:none; margin-top: 20px; padding: 20px; border: 2px dashed #007bff; border-radius: 10px; background-color: #f8f9ff; margin-bottom: 20px;">
+            <h5 class="text-center mb-3" style="color: #007bff;">Work Permit Certificate</h5>
+            <p class="text-center mb-3">Upload or capture the work permit certificate for this vendor service visitor.</p>
             
             <!-- File Upload Option -->
             <div class="form-group">
-                <label for="work_permit_certificate" class="form-label">Upload Work Permit Certificate: <span class="text-danger">*</span></label>
+                <label for="work_permit_certificate" class="form-label">Choose Work Permit Certificate from Device: <span class="text-danger">*</span></label>
                 <input type="file" class="form-control" id="work_permit_certificate" name="work_permit_certificate" accept=".png,.jpg,.jpeg,.gif,.pdf" required>
-                <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB. <span class="text-danger">*</span> Required for vendor service visitors</small>
-            </div>
-            
-            <!-- Safety Measures Checklist Upload -->
-            <div class="form-group">
-                <label for="safety_measures_checklist" class="form-label">Upload Safety Measures Checklist: <span class="text-danger">*</span></label>
-                <input type="file" class="form-control" id="safety_measures_checklist" name="safety_measures_checklist" accept=".png,.jpg,.jpeg,.gif,.pdf" required>
-                <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB. <span class="text-danger">*</span> Required for vendor service visitors</small>
+                <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB.</small>
             </div>
             
             <!-- Camera Option -->
             <div class="form-group">
-                <label class="form-label">Or take a photo of the document:</label>
+                <label class="form-label">Or Capture Work Permit Certificate with Camera:</label>
                 <div class="d-flex flex-column align-items-center">
                     <video id="workPermitVideo" width="320" height="240" style="border: 1px solid #ddd; margin-bottom: 10px; display: none;"></video>
                     <button type="button" id="start-workPermit-camera" class="btn btn-outline-primary mb-2">Start Camera</button>
                     <canvas id="workPermitCanvas" width="320" height="240" style="display: none;"></canvas>
                     <button type="button" id="capture-workPermit-photo" class="btn btn-outline-success mb-2" style="display: none;">Capture Photo</button>
-                    <img id="workPermitPreview" style="display: none; max-width: 100%; margin-top: 10px;" alt="Captured document preview">
+                    <img id="workPermitPreview" style="display: none; max-width: 100%; margin-top: 10px;" alt="Captured work permit preview">
                     <input type="hidden" id="workPermitCapturedImage" name="work_permit_captured_image">
                 </div>
             </div>
             
-            <!-- Safety Measures Checklist Camera Option -->
+            <div class="d-flex justify-content-center mt-3">
+                <button id="upload-work-permit-button" class="btn btn-primary">Upload Work Permit Certificate</button>
+            </div>
+        </div>
+
+        <!-- Safety Measures Checklist Upload Section -->
+        <div id="safety-checklist-upload-section" style="display:none; margin-top: 20px; padding: 20px; border: 2px dashed #28a745; border-radius: 10px; background-color: #f0fff4;">
+            <h5 class="text-center mb-3" style="color: #28a745;">Safety Measures Checklist</h5>
+            <p class="text-center mb-3">Upload or capture the safety measures checklist for this vendor service visitor.</p>
+            
+            <!-- File Upload Option -->
             <div class="form-group">
-                <label class="form-label">Or take a photo of the Safety Measures Checklist:</label>
+                <label for="safety_measures_checklist" class="form-label">Choose Safety Measures Checklist from Device: <span class="text-danger">*</span></label>
+                <input type="file" class="form-control" id="safety_measures_checklist" name="safety_measures_checklist" accept=".png,.jpg,.jpeg,.gif,.pdf" required>
+                <small class="form-text text-muted">Accepted formats: PNG, JPG, JPEG, GIF, PDF. Maximum file size: 5MB.</small>
+            </div>
+            
+            <!-- Camera Option -->
+            <div class="form-group">
+                <label class="form-label">Or Capture Safety Measures Checklist with Camera:</label>
                 <div class="d-flex flex-column align-items-center">
                     <video id="safetyMeasuresVideo" width="320" height="240" style="border: 1px solid #ddd; margin-bottom: 10px; display: none;"></video>
-                    <button type="button" id="start-safetyMeasures-camera" class="btn btn-outline-primary mb-2">Start Camera</button>
+                    <button type="button" id="start-safetyMeasures-camera" class="btn btn-outline-success mb-2">Start Camera</button>
                     <canvas id="safetyMeasuresCanvas" width="320" height="240" style="display: none;"></canvas>
-                    <button type="button" id="capture-safetyMeasures-photo" class="btn btn-outline-success mb-2" style="display: none;">Capture Photo</button>
+                    <button type="button" id="capture-safetyMeasures-photo" class="btn btn-outline-primary mb-2" style="display: none;">Capture Photo</button>
                     <img id="safetyMeasuresPreview" style="display: none; max-width: 100%; margin-top: 10px;" alt="Captured safety measures checklist preview">
                     <input type="hidden" id="safetyMeasuresCapturedImage" name="safety_measures_captured_image">
                 </div>
             </div>
             
             <div class="d-flex justify-content-center mt-3">
-                <button id="upload-work-permit-button" class="btn btn-primary">Upload Certificate</button>
+                <button id="upload-safety-checklist-button" class="btn btn-success">Upload Safety Measures Checklist</button>
             </div>
         </div>
 
@@ -408,12 +418,14 @@
                     document.getElementById('print-id-card-button').style.display = 'inline-block'; // Show print button
                                         
                     if (isVendorService) {
-                        // Show work permit upload form for vendor services without certificate
-                        document.getElementById('work-permit-upload').style.display = 'block';
-                        confirmCheckInButton.style.display = 'none'; // Hide check-in button
+                        // Show both upload sections for vendor services
+                        document.getElementById('work-permit-upload-section').style.display = 'block';
+                        document.getElementById('safety-checklist-upload-section').style.display = 'block';
+                        confirmCheckInButton.style.display = 'none'; // Hide check-in button until both documents uploaded
                     } else {
-                        // Show check-in button for non-vendor services or vendor services with certificate
-                        document.getElementById('work-permit-upload').style.display = 'none';
+                        // Show check-in button for non-vendor services
+                        document.getElementById('work-permit-upload-section').style.display = 'none';
+                        document.getElementById('safety-checklist-upload-section').style.display = 'none';
                         confirmCheckInButton.style.display = 'inline-block'; // Show confirm check-in button
                     }
                 
@@ -607,49 +619,93 @@
         if (uploadWorkPermitButton) {
             uploadWorkPermitButton.addEventListener('click', () => {
                 if (currentVisitorId) {
-                    // Create a FormData object to send both visitor ID and file
-                    const formData = new FormData();
-                    formData.append('visitor_id', currentVisitorId);
-                    
-                    // Check if a captured image exists
-                    if (workPermitCapturedImage.value) {
-                        // Add CSRF token to form data
-                        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-                        formData.append('csrf_token', csrfToken);
-                                        
-                        // Convert data URL to Blob and append to form
-                        fetch(workPermitCapturedImage.value)
-                            .then(res => res.blob())
-                            .then(blob => {
-                                // Create a file from the blob
-                                const file = new File([blob], `work_permit_${currentVisitorId}_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                                formData.append('work_permit_certificate', file);
-                                                
-                                // Submit the form with the captured image
-                                submitWorkPermitForm(formData);
-                            });
-                    } else {
-                        // Use file upload if no captured image
-                        const fileInput = document.getElementById('work_permit_certificate');
-                        if (fileInput.files.length > 0) {
-                            // Add CSRF token to form data
-                            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-                            formData.append('csrf_token', csrfToken);
-                            
-                            formData.append('work_permit_certificate', fileInput.files[0]);
-                            submitWorkPermitForm(formData);
-                        } else {
-                            alert('Please select a file to upload or capture a photo using the camera.');
-                        }
-                    }
+                    uploadWorkPermitCertificate(currentVisitorId);
                 } else {
                     alert("No visitor selected.");
                 }
             });
         }
         
-        // Helper function to submit work permit form
-        function submitWorkPermitForm(formData) {
+        // Event listener for the Upload Safety Checklist button
+        const uploadSafetyChecklistButton = document.getElementById('upload-safety-checklist-button');
+        if (uploadSafetyChecklistButton) {
+            uploadSafetyChecklistButton.addEventListener('click', () => {
+                if (currentVisitorId) {
+                    uploadSafetyMeasuresChecklist(currentVisitorId);
+                } else {
+                    alert("No visitor selected.");
+                }
+            });
+        }
+        
+        // Function to upload work permit certificate
+        function uploadWorkPermitCertificate(visitorId) {
+            const formData = new FormData();
+            formData.append('visitor_id', visitorId);
+            formData.append('upload_type', 'work_permit'); // Specify upload type
+            
+            // Add CSRF token
+            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+            formData.append('csrf_token', csrfToken);
+            
+            // Check if a captured image exists
+            const workPermitCapturedImage = document.getElementById('workPermitCapturedImage');
+            if (workPermitCapturedImage && workPermitCapturedImage.value) {
+                // Convert data URL to Blob
+                fetch(workPermitCapturedImage.value)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        const file = new File([blob], `work_permit_${visitorId}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                        formData.append('work_permit_certificate', file);
+                        submitSeparateUploadForm(formData, 'work_permit');
+                    });
+            } else {
+                // Use file upload
+                const fileInput = document.getElementById('work_permit_certificate');
+                if (fileInput && fileInput.files.length > 0) {
+                    formData.append('work_permit_certificate', fileInput.files[0]);
+                    submitSeparateUploadForm(formData, 'work_permit');
+                } else {
+                    alert('Please select a file to upload or capture a photo using the camera.');
+                }
+            }
+        }
+        
+        // Function to upload safety measures checklist
+        function uploadSafetyMeasuresChecklist(visitorId) {
+            const formData = new FormData();
+            formData.append('visitor_id', visitorId);
+            formData.append('upload_type', 'safety_checklist'); // Specify upload type
+            
+            // Add CSRF token
+            const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+            formData.append('csrf_token', csrfToken);
+            
+            // Check if a captured image exists
+            const safetyMeasuresCapturedImage = document.getElementById('safetyMeasuresCapturedImage');
+            if (safetyMeasuresCapturedImage && safetyMeasuresCapturedImage.value) {
+                // Convert data URL to Blob
+                fetch(safetyMeasuresCapturedImage.value)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        const file = new File([blob], `safety_measures_${visitorId}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                        formData.append('safety_measures_checklist', file);
+                        submitSeparateUploadForm(formData, 'safety_checklist');
+                    });
+            } else {
+                // Use file upload
+                const fileInput = document.getElementById('safety_measures_checklist');
+                if (fileInput && fileInput.files.length > 0) {
+                    formData.append('safety_measures_checklist', fileInput.files[0]);
+                    submitSeparateUploadForm(formData, 'safety_checklist');
+                } else {
+                    alert('Please select a file to upload or capture a photo using the camera.');
+                }
+            }
+        }
+        
+        // Helper function to submit separate upload forms
+        function submitSeparateUploadForm(formData, uploadType) {
             fetch('{{ url_for("check_in_approval") }}', {
                 method: 'POST',
                 body: formData,
@@ -658,12 +714,10 @@
                 }
             })
             .then(async response => {
-                // Check if response is JSON or HTML
                 const contentType = response.headers.get('content-type');
                 if (contentType && contentType.includes('application/json')) {
                     return response.json();
                 } else {
-                    // If not JSON, try to extract error message from HTML
                     const html = await response.text();
                     console.error('Non-JSON response received:', html);
                     throw new Error('Server returned an error page instead of JSON');
@@ -671,22 +725,63 @@
             })
             .then(data => {
                 if (data && data.success) {
-                    alert(data.message || 'Work permit certificate uploaded successfully!');
-                    // Hide the upload form and show the check-in button
-                    document.getElementById('work-permit-upload').style.display = 'none';
-                    document.getElementById('confirm-check-in-button').style.display = 'inline-block';
+                    alert(data.message || `${uploadType === 'work_permit' ? 'Work permit certificate' : 'Safety measures checklist'} uploaded successfully!`);
                     
-                    // Reset form elements
-                    document.getElementById('work_permit_certificate').value = '';
-                    workPermitPreview.style.display = 'none';
-                    workPermitCapturedImage.value = '';
+                    // Check if both documents are now uploaded based on server response
+                    if (data.both_uploaded) {
+                        // Both documents uploaded - hide both sections and show check-in button
+                        document.getElementById('work-permit-upload-section').style.display = 'none';
+                        document.getElementById('safety-checklist-upload-section').style.display = 'none';
+                        document.getElementById('confirm-check-in-button').style.display = 'inline-block';
+                        
+                        // Trigger EHS notification
+                        if (data.message && data.message.includes('EHS approval process will begin')) {
+                            console.log('EHS notification should be triggered');
+                        }
+                    } else {
+                        // Only one document uploaded - hide only the uploaded section
+                        if (uploadType === 'work_permit') {
+                            document.getElementById('work-permit-upload-section').style.display = 'none';
+                        } else {
+                            document.getElementById('safety-checklist-upload-section').style.display = 'none';
+                        }
+                    }
+                    
+                    // Reset form elements for this section
+                    if (uploadType === 'work_permit') {
+                        document.getElementById('work_permit_certificate').value = '';
+                        document.getElementById('workPermitPreview').style.display = 'none';
+                        document.getElementById('workPermitCapturedImage').value = '';
+                        // Stop camera if running
+                        const workPermitStream = document.getElementById('workPermitVideo').srcObject;
+                        if (workPermitStream) {
+                            workPermitStream.getTracks().forEach(track => track.stop());
+                            document.getElementById('workPermitVideo').srcObject = null;
+                            document.getElementById('workPermitVideo').style.display = 'none';
+                            document.getElementById('start-workPermit-camera').style.display = 'block';
+                            document.getElementById('capture-workPermit-photo').style.display = 'none';
+                        }
+                    } else {
+                        document.getElementById('safety_measures_checklist').value = '';
+                        document.getElementById('safetyMeasuresPreview').style.display = 'none';
+                        document.getElementById('safetyMeasuresCapturedImage').value = '';
+                        // Stop camera if running
+                        const safetyMeasuresStream = document.getElementById('safetyMeasuresVideo').srcObject;
+                        if (safetyMeasuresStream) {
+                            safetyMeasuresStream.getTracks().forEach(track => track.stop());
+                            document.getElementById('safetyMeasuresVideo').srcObject = null;
+                            document.getElementById('safetyMeasuresVideo').style.display = 'none';
+                            document.getElementById('start-safetyMeasures-camera').style.display = 'block';
+                            document.getElementById('capture-safetyMeasures-photo').style.display = 'none';
+                        }
+                    }
                 } else {
-                    alert(data.message || 'Error uploading work permit certificate.');
+                    alert(data.message || `Error uploading ${uploadType === 'work_permit' ? 'work permit certificate' : 'safety measures checklist'}.`);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error uploading work permit certificate: ' + error.message);
+                alert(`Error uploading ${uploadType === 'work_permit' ? 'work permit certificate' : 'safety measures checklist'}: ` + error.message);
             });
         }
         

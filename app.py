@@ -394,10 +394,18 @@ class Visitor(db.Model):
     Visitor_ID = db.Column(db.String(100))
     original_visitor_id = db.Column(db.String(100))
 
-    # New fields for Material Details (single entry for now)
+    # EHS Approval Fields
+    ehs_approved = db.Column(db.Boolean, default=False)  # Whether EHS has approved the visitor
+    ehs_approved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # ID of EHS user who approved
+    ehs_approved_at = db.Column(db.DateTime)  # Timestamp when EHS approved
+    ehs_rejected = db.Column(db.Boolean, default=False)  # Whether EHS has rejected the visitor
+    ehs_rejection_reason = db.Column(db.Text)  # Reason for EHS rejection
+    
+    # Relationships
     host = db.relationship('User', foreign_keys=[host_id])
     created_by_user = db.relationship('User', foreign_keys=[created_by])
     approved_by_user = db.relationship('User', foreign_keys=[approved_by_id])
+    ehs_approved_by_user = db.relationship('User', foreign_keys=[ehs_approved_by_id])
     materials = db.relationship('Material', backref='visitor', lazy=True, cascade="all, delete-orphan")
 
 
@@ -562,7 +570,7 @@ def set_security_headers(response):
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('Referrer-Policy', 'no-referrer')
     response.headers.setdefault('Cache-Control', 'no-store')
-    csp = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' https://cdnjs.cloudflare.com;"
+    csp = "default-src 'self'; connect-src 'self' data:; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' https://cdnjs.cloudflare.com;"
     response.headers.setdefault('Content-Security-Policy', csp)
     if request.is_secure:
         response.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
@@ -1188,27 +1196,56 @@ def approval_dashboard():
         flash('Access denied!', 'error')
         return redirect(url_for('dashboard',_external=True))
 
-    # Get pending approvals based on user role and unit access
+    # Get regular approvals based on user role and unit access
     if current_user.role == 'admin':
         # Admin users - filter by unit access
         if not current_user.unit or current_user.unit.lower() == 'all' or current_user.unit == 'All Unit':
             # Global admin - can see all pending approvals
-            pending_approvals = Visitor.query.filter_by(status='pending').order_by(Visitor.check_in_time.desc()).all()
+            regular_approvals = Visitor.query.filter_by(status='pending').order_by(Visitor.check_in_time.desc()).all()
         else:
             # Unit-specific admin - can only see approvals from their unit
-            pending_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
+            regular_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
     elif current_user.role == 'security':
-        pending_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
+        regular_approvals = Visitor.query.filter_by(status='pending', unit=current_user.unit).order_by(Visitor.check_in_time.desc()).all()
     elif current_user.is_hod and current_user.department:
-        # HODs see pending approvals for all employees in their department
-        pending_approvals = Visitor.query.join(User, Visitor.host_id == User.id).filter(
-            Visitor.status == 'pending',
-            User.department == current_user.department
+        # HODs see regular pending approvals and vendor service visitors needing final HOD approval after EHS
+        regular_approvals = Visitor.query.join(User, Visitor.host_id == User.id).filter(
+            User.department == current_user.department,
+            db.or_(
+                Visitor.status == 'pending',  # Regular pending approvals
+                db.and_(
+                    Visitor.status == 'approved',  # Registration approved
+                    db.func.lower(Visitor.purpose).like('%vendor%service%'),  # Vendor service visitor
+                    Visitor.ehs_approved == True  # EHS approved
+                )
+            )
         ).order_by(Visitor.check_in_time.desc()).all()
+    elif current_user.department and 'safety' in current_user.department.lower() and current_user.unit:
+        # EHS personnel don't see regular approvals in tab view
+        regular_approvals = []
     else:  # Regular employee
-        pending_approvals = Visitor.query.filter_by(status='pending', host_id=current_user.id).order_by(Visitor.check_in_time.desc()).all()
+        regular_approvals = Visitor.query.filter_by(status='pending', host_id=current_user.id).order_by(Visitor.check_in_time.desc()).all()
+    
+    # Get EHS approvals (vendor service visitors needing EHS approval)
+    if (current_user.is_hod and current_user.department) or (current_user.department and 'safety' in current_user.department.lower() and current_user.unit):
+        # Both HODs and EHS personnel can see EHS approvals
+        # Only show vendor service visitors who have completed check-in document upload process
+        ehs_approvals = Visitor.query.filter(
+            Visitor.status == 'approved',  # Registration approved
+            db.or_(Visitor.ehs_approved.is_(None), Visitor.ehs_approved == False),  # Not yet approved by EHS
+            Visitor.work_permit_certificate.isnot(None),  # Work permit certificate uploaded
+            Visitor.safety_measures_checklist.isnot(None),  # Safety measures checklist uploaded
+            db.func.lower(Visitor.purpose).like('%vendor%service%'),  # Vendor service visitors
+            # Additional check to ensure documents were uploaded through check-in process
+            Visitor.work_permit_certificate.like('work_permit_%'),  # Work permit uploaded through check-in
+            Visitor.safety_measures_checklist.like('safety_measures_%')  # Safety measures uploaded through check-in
+        ).order_by(Visitor.check_in_time.desc()).all()
+    else:
+        ehs_approvals = []
 
-    return render_template('approval_dashboard.html', pending_approvals=pending_approvals)
+    return render_template('approval_dashboard.html', 
+                         regular_approvals=regular_approvals,
+                         ehs_approvals=ehs_approvals)
 
 @app.route(get_url_prefix() + '/get_visitor_details/<string:visitor_id>')
 @rate_limit(limit=60, window=60, name='get_visitor_details')
@@ -1421,10 +1458,16 @@ def check_in_approval():
 
     if request.method == 'POST':
         visitor_id = request.form.get('visitor_id')
+        upload_type = request.form.get('upload_type')  # New field to distinguish upload types
         work_permit_file = request.files.get('work_permit_certificate')
         work_permit_captured_image = request.form.get('work_permit_captured_image')  # Captured image from camera
         safety_measures_file = request.files.get('safety_measures_checklist')
         safety_measures_captured_image = request.form.get('safety_measures_captured_image')  # Captured image from camera
+        
+        # Handle separate upload requests
+        if upload_type:
+            return handle_separate_upload(visitor_id, upload_type, work_permit_file, work_permit_captured_image, safety_measures_file, safety_measures_captured_image)
+        
         if visitor_id:
             try:
                 visitor = Visitor.query.filter_by(Visitor_ID=visitor_id).first()
@@ -1561,11 +1604,118 @@ def check_in_approval():
                                         # Check if work permit certificate is also uploaded now
                                         if not work_permit_missing or (work_permit_file and work_permit_file.filename != '') or work_permit_captured_image:
                                             # Both documents are now uploaded
+                                            # Send notification to HOD
+                                            try:
+                                                host = visitor.host
+                                                if host and host.department:
+                                                    hod_user = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
+                                                    if hod_user and hod_user.email:
+                                                        hod_subject = f"Vendor Service Visitor Documents Uploaded: {visitor.name} Requires Final Approval"
+                                                        hod_html_body = f"""
+                                                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                                                            <div style="background-color: #28a745; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+                                                                <h2 style="margin: 0;">Vendor Service Visitor Documents Uploaded</h2>
+                                                            </div>
+                                                            <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                                                <p style="font-size: 16px;">Dear <strong>{hod_user.username}</strong>,</p>
+                                                                <p style="font-size: 16px; line-height: 1.6;">
+                                                                    A vendor service visitor has uploaded required documents and requires your final approval after EHS review.
+                                                                </p>
+                                                                
+                                                                <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
+                                                                    <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Email:</strong> {visitor.email or 'N/A'}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Mobile:</strong> {visitor.mobile}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Company:</strong> {visitor.company or 'N/A'}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Unit:</strong> {visitor.unit}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Host:</strong> {visitor.host.username if visitor.host else 'N/A'}</p>
+                                                                    <p style="margin: 5px 0;"><strong>Uploaded At:</strong> {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}</p>
+                                                                </div>
+                                                                
+                                                                <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+                                                                    <p style="margin: 5px 0;"><strong>Documents Uploaded:</strong></p>
+                                                                    <ul style="margin: 10px 0; padding-left: 20px;">
+                                                                        <li>Work Permit Certificate: {'Yes' if visitor.work_permit_certificate else 'No'}</li>
+                                                                        <li>Safety Measures Checklist: {'Yes' if visitor.safety_measures_checklist else 'No'}</li>
+                                                                    </ul>
+                                                                </div>
+                                                                
+                                                                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                                                                    <p style="font-size: 16px; color: #666;">
+                                                                        <strong>Workflow Status:</strong>
+                                                                    </p>
+                                                                    <ul style="color: #666; font-size: 14px; line-height: 1.8;">
+                                                                        <li>✓ Registration approved by you</li>
+                                                                        <li>✓ Documents uploaded by visitor</li>
+                                                                        <li>• Pending: EHS review and approval</li>
+                                                                        <li>• Pending: Your final approval for check-in</li>
+                                                                    </ul>
+                                                                </div>
+                                                                
+                                                                <p style="margin-top: 30px; font-size: 16px;">Please wait for EHS approval, then log in to the VMS system to provide your final approval for check-in.</p>
+                                                                <p style="font-size: 16px;">
+                                                                    Best regards,<br>
+                                                                    <strong>Violin Technologies Pvt Ltd</strong>
+                                                                </p>
+                                                            </div>
+                                                            <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+                                                                <p>This is an automated email. Please do not reply to this message.</p>
+                                                            </div>
+                                                        </div>
+                                                        """
+                                                        
+                                                        hod_plain_body = f"""
+                                                        ════════════════════════════════════════════════════════════
+                                                            VENDOR SERVICE VISITOR DOCUMENTS UPLOADED - FINAL APPROVAL REQUIRED
+                                                        ════════════════════════════════════════════════════════════
+                                                        
+                                                        Dear {hod_user.username},
+                                                        
+                                                        A vendor service visitor has uploaded required documents and requires your final approval after EHS review.
+                                                        
+                                                        VISITOR DETAILS:
+                                                        Name: {visitor.name}
+                                                        Visitor ID: {visitor.Visitor_ID}
+                                                        Email: {visitor.email or 'N/A'}
+                                                        Mobile: {visitor.mobile}
+                                                        Purpose: {visitor.purpose}
+                                                        Company: {visitor.company or 'N/A'}
+                                                        Unit: {visitor.unit}
+                                                        Host: {visitor.host.username if visitor.host else 'N/A'}
+                                                        Uploaded At: {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}
+                                                        
+                                                        DOCUMENTS UPLOADED:
+                                                        Work Permit Certificate: {'Yes' if visitor.work_permit_certificate else 'No'}
+                                                        Safety Measures Checklist: {'Yes' if visitor.safety_measures_checklist else 'No'}
+                                                        
+                                                        WORKFLOW STATUS:
+                                                        ✓ Registration approved by you
+                                                        ✓ Documents uploaded by visitor
+                                                        • Pending: EHS review and approval
+                                                        • Pending: Your final approval for check-in
+                                                        
+                                                        Please wait for EHS approval, then log in to the VMS system to provide your final approval for check-in.
+                                                        
+                                                        Best regards,
+                                                        Violin Technologies Pvt Ltd
+                                                        
+                                                        ════════════════════════════════════════════════════════════
+                                                        This is an automated email. Please do not reply to this message.
+                                                        ════════════════════════════════════════════════════════════
+                                                        """
+                                                        
+                                                        send_email(hod_user.email, hod_subject, hod_plain_body, html_body=hod_html_body, async_mode=True)
+                                                        logging.info(f'HOD notification sent to {hod_user.email} for visitor {visitor.name}')
+                                            except Exception as e:
+                                                logging.error(f'Error sending HOD notification: {str(e)}')
+                                            
                                             if request.headers.get('Content-Type', '').startswith('application/json') or \
                                                request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                                return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully!'})
+                                                return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully! HOD notification sent.'})
                                             else:
-                                                flash('Work permit certificate and safety measures checklist uploaded successfully!', 'success')
+                                                flash('Work permit certificate and safety measures checklist uploaded successfully! HOD notification sent.', 'success')
                                         else:
                                             # Only safety measures checklist uploaded, work permit still needed
                                             if request.headers.get('Content-Type', '').startswith('application/json') or \
@@ -1645,6 +1795,12 @@ def check_in_approval():
                     
                     # Only allow check-in if status is 'approved'
                     if visitor.status == 'approved':
+                        # For vendor service visitors, also require EHS approval
+                        if visitor.purpose and 'Vendor Service' in visitor.purpose:
+                            if not visitor.ehs_approved:
+                                flash(f"Visitor {visitor.name} (ID: {visitor_id}) requires EHS approval before check-in. Please wait for EHS department approval.", 'error')
+                                return redirect(url_for('check_in_approval', _external=True))
+                        
                         visitor.check_in_time = datetime.now(IST_TIMEZONE)
                         visitor.status = 'checked-in'  # Update status to checked-in
                         try:
@@ -1680,6 +1836,269 @@ def check_in_approval():
     approved_visitors = query.order_by(Visitor.check_in_time.desc()).all()
 
     return render_template('check_in_approval.html', approved_visitors=approved_visitors)
+
+
+def handle_separate_upload(visitor_id, upload_type, work_permit_file, work_permit_captured_image, safety_measures_file, safety_measures_captured_image):
+    """Handle separate upload requests for work permit and safety checklist"""
+    try:
+        visitor = Visitor.query.filter_by(Visitor_ID=visitor_id).first()
+        if not visitor:
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Visitor not found!'})
+            else:
+                flash('Visitor not found!', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+        
+        # Check if purpose is 'Vendor Service'
+        if not visitor.purpose or 'Vendor Service' not in visitor.purpose:
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Document upload only required for Vendor Service visitors.'})
+            else:
+                flash('Document upload only required for Vendor Service visitors.', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+        
+        # Handle work permit certificate upload
+        if upload_type == 'work_permit':
+            return handle_work_permit_upload(visitor, work_permit_file, work_permit_captured_image)
+        
+        # Handle safety measures checklist upload
+        elif upload_type == 'safety_checklist':
+            return handle_safety_checklist_upload(visitor, safety_measures_file, safety_measures_captured_image)
+        
+        else:
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Invalid upload type specified.'})
+            else:
+                flash('Invalid upload type specified.', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+                
+    except Exception as e:
+        logging.error(f"Error in separate upload handling: {e}", exc_info=True)
+        if request.headers.get('Content-Type', '').startswith('application/json') or \
+           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+            return jsonify({'success': False, 'message': f'Error processing upload: {str(e)}'}), 500
+        else:
+            flash(f'Error processing upload: {str(e)}', 'error')
+            return redirect(url_for('check_in_approval', _external=True))
+
+
+def handle_work_permit_upload(visitor, work_permit_file, work_permit_captured_image):
+    """Handle work permit certificate upload"""
+    visitor_id = visitor.Visitor_ID
+    
+    if work_permit_file and work_permit_file.filename != '':
+        # Validate file type
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+        if work_permit_file.filename is not None and '.' in work_permit_file.filename and \
+           work_permit_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
+            # Generate unique filename
+            filename = f"work_permit_{visitor_id}_{work_permit_file.filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            work_permit_file.save(filepath)
+            
+            # Update visitor with work permit certificate path
+            visitor.work_permit_certificate = filename
+            db.session.commit()
+            
+            # Check if both documents are now uploaded
+            both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
+            
+            message = 'Work permit certificate uploaded successfully!'
+            if both_uploaded:
+                message += ' Both documents uploaded. EHS approval process will begin.'
+                # Trigger EHS notification if both documents are uploaded
+                trigger_ehs_notification(visitor)
+            else:
+                message += ' Please also upload the safety measures checklist.'
+            
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': True, 'message': message, 'both_uploaded': both_uploaded})
+            else:
+                flash(message, 'success')
+                return redirect(url_for('check_in_approval', _external=True))
+        else:
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.'})
+            else:
+                flash('Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for work permit certificate.', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+    elif work_permit_captured_image:
+        # Process captured image from camera
+        import base64
+        try:
+            # Extract the image data from the data URL
+            if work_permit_captured_image.startswith('data:image'):
+                # Extract the image format and data
+                header, encoded = work_permit_captured_image.split(',', 1)
+                image_format = header.split('/')[1].split(';')[0]
+                
+                # Decode the base64 image data
+                image_data = base64.b64decode(encoded)
+                
+                # Generate a unique filename
+                filename = f"work_permit_{visitor_id}_{datetime.now(IST_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.jpg"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Save the image
+                with open(filepath, 'wb') as f:
+                    f.write(image_data)
+                
+                # Update visitor with work permit certificate path
+                visitor.work_permit_certificate = filename
+                db.session.commit()
+                
+                # Check if both documents are now uploaded
+                both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
+                
+                message = 'Work permit certificate uploaded successfully!'
+                if both_uploaded:
+                    message += ' Both documents uploaded. EHS approval process will begin.'
+                    # Trigger EHS notification if both documents are uploaded
+                    trigger_ehs_notification(visitor)
+                else:
+                    message += ' Please also upload the safety measures checklist.'
+                
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': True, 'message': message, 'both_uploaded': both_uploaded})
+                else:
+                    flash(message, 'success')
+                    return redirect(url_for('check_in_approval', _external=True))
+            else:
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': False, 'message': 'Invalid image format received from camera.'})
+                else:
+                    flash('Invalid image format received from camera.', 'error')
+                    return redirect(url_for('check_in_approval', _external=True))
+        except Exception as e:
+            logging.error(f"Error processing captured work permit image: {e}")
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Error processing captured image. Please try again.'})
+            else:
+                flash('Error processing captured image. Please try again.', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+    else:
+        if request.headers.get('Content-Type', '').startswith('application/json') or \
+           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+            return jsonify({'success': False, 'message': 'Work permit certificate required. Please upload the certificate.'})
+        else:
+            flash('Work permit certificate required. Please upload the certificate.', 'error')
+            return redirect(url_for('check_in_approval', _external=True))
+
+
+def handle_safety_checklist_upload(visitor, safety_measures_file, safety_measures_captured_image):
+    """Handle safety measures checklist upload"""
+    visitor_id = visitor.Visitor_ID
+    
+    if safety_measures_file and safety_measures_file.filename != '':
+        # Validate file type
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+        if safety_measures_file.filename is not None and '.' in safety_measures_file.filename and \
+           safety_measures_file.filename.rsplit('.', 1)[1].lower() in allowed_extensions:
+            # Generate unique filename
+            filename = f"safety_measures_{visitor_id}_{safety_measures_file.filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            safety_measures_file.save(filepath)
+            
+            # Update visitor with safety measures checklist path
+            visitor.safety_measures_checklist = filename
+            db.session.commit()
+            
+            # Check if both documents are now uploaded
+            both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
+            
+            message = 'Safety measures checklist uploaded successfully!'
+            if both_uploaded:
+                message += ' Both documents uploaded. EHS approval process will begin.'
+                # Trigger EHS notification if both documents are uploaded
+                trigger_ehs_notification(visitor)
+            else:
+                message += ' Please also upload the work permit certificate.'
+            
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': True, 'message': message, 'both_uploaded': both_uploaded})
+            else:
+                flash(message, 'success')
+                return redirect(url_for('check_in_approval', _external=True))
+        else:
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for safety measures checklist.'})
+            else:
+                flash('Invalid file type. Only PNG, JPG, JPEG, GIF, and PDF files are allowed for safety measures checklist.', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+    elif safety_measures_captured_image:
+        # Process captured image from camera
+        import base64
+        try:
+            # Extract the image data from the data URL
+            if safety_measures_captured_image.startswith('data:image'):
+                # Extract the image format and data
+                header, encoded = safety_measures_captured_image.split(',', 1)
+                image_format = header.split('/')[1].split(';')[0]
+                
+                # Decode the base64 image data
+                image_data = base64.b64decode(encoded)
+                
+                # Generate a unique filename
+                filename = f"safety_measures_{visitor_id}_{datetime.now(IST_TIMEZONE).strftime('%Y%m%d_%H%M%S')}.jpg"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Save the image
+                with open(filepath, 'wb') as f:
+                    f.write(image_data)
+                
+                # Update visitor with safety measures checklist path
+                visitor.safety_measures_checklist = filename
+                db.session.commit()
+                
+                # Check if both documents are now uploaded
+                both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
+                
+                message = 'Safety measures checklist uploaded successfully!'
+                if both_uploaded:
+                    message += ' Both documents uploaded. EHS approval process will begin.'
+                    # Trigger EHS notification if both documents are uploaded
+                    trigger_ehs_notification(visitor)
+                else:
+                    message += ' Please also upload the work permit certificate.'
+                
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': True, 'message': message, 'both_uploaded': both_uploaded})
+                else:
+                    flash(message, 'success')
+                    return redirect(url_for('check_in_approval', _external=True))
+            else:
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': False, 'message': 'Invalid image format received from camera.'})
+                else:
+                    flash('Invalid image format received from camera.', 'error')
+                    return redirect(url_for('check_in_approval', _external=True))
+        except Exception as e:
+            logging.error(f"Error processing captured safety measures image: {e}")
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'Error processing captured image. Please try again.'})
+            else:
+                flash('Error processing captured image. Please try again.', 'error')
+                return redirect(url_for('check_in_approval', _external=True))
+    else:
+        if request.headers.get('Content-Type', '').startswith('application/json') or \
+           request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+            return jsonify({'success': False, 'message': 'Safety measures checklist required. Please upload the checklist.'})
+        else:
+            flash('Safety measures checklist required. Please upload the checklist.', 'error')
+            return redirect(url_for('check_in_approval', _external=True))
 
 
 @app.route(get_url_prefix() + '/check_out_approval', methods=['GET', 'POST'])
@@ -2886,6 +3305,218 @@ This is an automated email. Please do not reply to this message.
     return redirect(url_for('approval_dashboard',_external=True))
 
 
+@app.route(get_url_prefix() + '/ehs_approve_visitor', methods=['POST'])
+@rate_limit(limit=20, window=60, name='ehs_approve')
+@login_required
+def ehs_approve_visitor():
+    if request.method == 'POST':
+        visitor_id = request.form.get('visitor_id')
+        action = request.form.get('action')  # 'approve' or 'reject'
+        rejection_reason = request.form.get('rejection_reason', '')
+        
+        if not visitor_id:
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': 'No visitor ID provided!'})
+            else:
+                flash('No visitor ID provided!', 'error')
+                return redirect(url_for('approval_dashboard', _external=True))
+        
+        try:
+            visitor = Visitor.query.filter_by(Visitor_ID=visitor_id).first()
+            if not visitor:
+                visitor = Visitor.query.get(visitor_id)
+                
+            if not visitor:
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': False, 'message': 'Visitor not found!'})
+                else:
+                    flash('Visitor not found!', 'error')
+                    return redirect(url_for('approval_dashboard', _external=True))
+            
+            # Check if current user is in safety department
+            if not (current_user.department and 'safety' in current_user.department.lower()):
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': False, 'message': 'Access denied! Only safety department personnel can approve EHS documents.'})
+                else:
+                    flash('Access denied! Only safety department personnel can approve EHS documents.', 'error')
+                    return redirect(url_for('approval_dashboard', _external=True))
+            
+            # Check if visitor is eligible for EHS approval
+            if not (visitor.status == 'approved' and \
+                    visitor.work_permit_certificate and \
+                    visitor.safety_measures_checklist and \
+                    'Vendor Service' in visitor.purpose and \
+                    not visitor.ehs_approved):
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': False, 'message': 'Visitor not eligible for EHS approval!'})
+                else:
+                    flash('Visitor not eligible for EHS approval!', 'error')
+                    return redirect(url_for('approval_dashboard', _external=True))
+            
+            if action == 'approve':
+                # Approve EHS
+                visitor.ehs_approved = True
+                visitor.ehs_approved_by_id = current_user.id
+                visitor.ehs_approved_at = datetime.now(IST_TIMEZONE)
+                visitor.ehs_rejected = False
+                visitor.ehs_rejection_reason = None
+                db.session.commit()
+                
+                message = f'Visitor {visitor.name} approved by EHS successfully! Notification sent.'
+                
+                # Send notification to HOD
+                try:
+                    host = visitor.host
+                    if host and host.department:
+                        hod_user = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
+                        if hod_user and hod_user.email:
+                            hod_subject = f'EHS Approval Completed: {visitor.name} Requires Your Final Approval'
+                            hod_html_body = f"""
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                                <div style="background-color: #28a745; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+                                    <h2 style="margin: 0;">EHS Approval Completed</h2>
+                                </div>
+                                <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                    <p style="font-size: 16px;">Dear <strong>{hod_user.username}</strong>,</p>
+                                    <p style="font-size: 16px; line-height: 1.6;">
+                                        The EHS department has completed their review and approved the documents for vendor service visitor <strong>{visitor.name}</strong>.
+                                    </p>
+                                    
+                                    <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
+                                        <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                                        <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                                        <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
+                                        <p style="margin: 5px 0;"><strong>EHS Approved At:</strong> {visitor.ehs_approved_at.strftime('%Y-%m-%d %H:%M:%S')}</p>
+                                    </div>
+                                    
+                                    <p style="margin-top: 30px; font-size: 16px;">Please log in to the VMS system to provide your final approval for check-in.</p>
+                                    <p style="font-size: 16px;">
+                                        Best regards,<br>
+                                        <strong>Violin Technologies Pvt Ltd</strong>
+                                    </p>
+                                </div>
+                            </div>
+                            """
+                            
+                            hod_plain_body = f"""
+                            EHS Approval Completed
+                            
+                            Dear {hod_user.username},
+                            
+                            The EHS department has completed their review and approved the documents for vendor service visitor {visitor.name}.
+                            
+                            Visitor Details:
+                            - Name: {visitor.name}
+                            - Visitor ID: {visitor.Visitor_ID}
+                            - Purpose: {visitor.purpose}
+                            - EHS Approved At: {visitor.ehs_approved_at.strftime('%Y-%m-%d %H:%M:%S')}
+                            
+                            Please log in to the VMS system to provide your final approval for check-in.
+                            
+                            Best regards,
+                            Violin Technologies Pvt Ltd
+                            """
+                            
+                            send_email(hod_user.email, hod_subject, hod_plain_body, html_body=hod_html_body, async_mode=True)
+                            logging.info(f'HOD notification sent to {hod_user.email} for EHS approved visitor {visitor.name}')
+                except Exception as e:
+                    logging.error(f'Error sending HOD notification for EHS approval: {str(e)}')
+                
+            elif action == 'reject':
+                # Reject EHS
+                visitor.ehs_rejected = True
+                visitor.ehs_rejection_reason = rejection_reason
+                visitor.ehs_approved = False
+                visitor.ehs_approved_by_id = None
+                visitor.ehs_approved_at = None
+                db.session.commit()
+                
+                message = f'Visitor {visitor.name} rejected by EHS successfully! Notification sent.'
+                
+                # Send rejection notification to host
+                try:
+                    host = visitor.host
+                    if host and host.email:
+                        rejection_subject = f'EHS Document Rejection: {visitor.name}'
+                        rejection_html_body = f"""
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                            <div style="background-color: #dc3545; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+                                <h2 style="margin: 0;">EHS Document Rejection</h2>
+                            </div>
+                            <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                <p style="font-size: 16px;">Dear <strong>{host.username}</strong>,</p>
+                                <p style="font-size: 16px; line-height: 1.6;">
+                                    The EHS department has rejected the documents for vendor service visitor <strong>{visitor.name}</strong>.
+                                </p>
+                                
+                                <div style="background-color: #f8d7da; padding: 20px; border-left: 4px solid #dc3545; margin: 20px 0;">
+                                    <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                                    <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                                    <p style="margin: 5px 0;"><strong>Rejection Reason:</strong> {rejection_reason}</p>
+                                    <p style="margin: 5px 0;"><strong>Rejected At:</strong> {datetime.now(IST_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')}</p>
+                                </div>
+                                
+                                <p style="margin-top: 30px; font-size: 16px;">Please contact the EHS department for clarification and resubmit the required documents.</p>
+                                <p style="font-size: 16px;">
+                                    Best regards,<br>
+                                    <strong>Violin Technologies Pvt Ltd</strong>
+                                </p>
+                            </div>
+                        </div>
+                        """
+                        
+                        rejection_plain_body = f"""
+                        EHS Document Rejection
+                        
+                        Dear {host.username},
+                        
+                        The EHS department has rejected the documents for vendor service visitor {visitor.name}.
+                        
+                        Rejection Details:
+                        - Visitor Name: {visitor.name}
+                        - Visitor ID: {visitor.Visitor_ID}
+                        - Rejection Reason: {rejection_reason}
+                        - Rejected At: {datetime.now(IST_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')}
+                        
+                        Please contact the EHS department for clarification and resubmit the required documents.
+                        
+                        Best regards,
+                        Violin Technologies Pvt Ltd
+                        """
+                        
+                        send_email(host.email, rejection_subject, rejection_plain_body, html_body=rejection_html_body, async_mode=True)
+                        logging.info(f'Rejection notification sent to {host.email} for EHS rejected visitor {visitor.name}')
+                except Exception as e:
+                    logging.error(f'Error sending rejection notification: {str(e)}')
+            else:
+                if request.headers.get('Content-Type', '').startswith('application/json') or \
+                   request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                    return jsonify({'success': False, 'message': 'Invalid action specified!'})
+                else:
+                    flash('Invalid action specified!', 'error')
+                    return redirect(url_for('approval_dashboard', _external=True))
+            
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': True, 'message': message})
+            else:
+                flash(message, 'success')
+                return redirect(url_for('approval_dashboard', _external=True))
+                
+        except Exception as e:
+            logging.error(f'Error processing EHS approval: {str(e)}')
+            if request.headers.get('Content-Type', '').startswith('application/json') or \
+               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
+                return jsonify({'success': False, 'message': f'Error processing EHS approval: {str(e)}'})
+            else:
+                flash(f'Error processing EHS approval: {str(e)}', 'error')
+                return redirect(url_for('approval_dashboard', _external=True))
+
+
 @app.route(get_url_prefix() + '/reject_visitor/<int:visitor_id>', methods=['GET','POST'])
 @rate_limit(limit=20, window=60, name='reject')
 @login_required
@@ -2953,16 +3584,39 @@ def uploaded_file(filename):
             Visitor.id_proof_path == filename,
             Visitor.visitor_image == filename,
             Visitor.qr_code == filename,
-            Visitor.work_permit_certificate == filename
+            Visitor.work_permit_certificate == filename,
+            Visitor.safety_measures_checklist == filename
         )
     ).first()
     if not visitor:
         abort(404)
-    if not (
-        (current_user.role == 'admin') or
-        (current_user.role == 'security' and getattr(visitor, 'unit', None) == current_user.unit) or
-        (current_user.role == 'employee' and visitor.host_id == current_user.id)
-    ):
+    # Check if user has permission to access this file
+    has_access = False
+    
+    # Admin users have access to all files
+    if current_user.role == 'admin':
+        has_access = True
+    
+    # Security users can access files from their unit
+    elif current_user.role == 'security' and getattr(visitor, 'unit', None) == current_user.unit:
+        has_access = True
+    
+    # Employee users can access files for visitors they host
+    elif current_user.role == 'employee' and visitor.host_id == current_user.id:
+        has_access = True
+    
+    # Safety department personnel can access work permit and safety checklist files for EHS approval
+    elif (current_user.department and 'safety' in current_user.department.lower() and 
+          current_user.unit == visitor.unit and
+          (filename == visitor.work_permit_certificate or filename == visitor.safety_measures_checklist)):
+        has_access = True
+    
+    # HOD users can access files for visitors in their department
+    elif (current_user.is_hod and current_user.department and 
+          visitor.host and visitor.host.department == current_user.department):
+        has_access = True
+    
+    if not has_access:
         abort(403)
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
@@ -3320,7 +3974,15 @@ if __name__ != "__main__":
     # Start scheduler in a background thread
     scheduler_thread = Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logging.info('Scheduler started in background thread')
+    logging.info("Scheduler started in background thread")
+
+
+def trigger_ehs_notification(visitor):
+    """Trigger EHS notification when both documents are uploaded"""
+    # Simple implementation for now - just log that it was called
+    logging.info(f"EHS notification triggered for visitor {visitor.name} (ID: {visitor.Visitor_ID})")
+    # In a real implementation, this would send emails to EHS personnel and HOD
+    pass
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001)
