@@ -94,6 +94,7 @@ def filter_query_by_unit(query, model, user, unit_field='unit'):
 
 
 def get_url_prefix():
+    """Get the URL prefix from config."""
     return app.config.get('URL_PREFIX', '/vms')
 
 
@@ -169,13 +170,16 @@ IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-app = Flask(__name__)
+# Initialize Flask app with correct static URL path
+url_prefix = '/vms'  # Set default prefix directly to ensure consistency
+app = Flask(
+    __name__,
+    static_url_path='/vms/static',  # Set static URL path during app creation
+    static_folder='static'  # Set static folder during app creation
+)
 app.config.from_object(Config)
-# Set APPLICATION_ROOT to handle URL prefix
-url_prefix = app.config.get('URL_PREFIX', '/vms')
-app.config['APPLICATION_ROOT'] = url_prefix
-# Set static URL path dynamically based on URL_PREFIX
-app.static_url_path = f'{url_prefix}/static'
+# Update URL_PREFIX in config to match
+app.config['URL_PREFIX'] = url_prefix
 # Disable debug by default; allow enabling via FLASK_DEBUG env
 app.debug = bool(os.environ.get('FLASK_DEBUG', '0').lower() in ['1', 'true'])
 app.config['DEBUG'] = app.debug
@@ -558,8 +562,9 @@ def load_user(user_id):
 
 @app.before_request
 def adjust_script_root():
-    # This tells Flask that it's being served under the configured prefix
+    """Ensure correct script root for URL generation."""
     current_prefix = app.config.get('APPLICATION_ROOT', '/vms')
+    # Set script root for correct URL generation when accessing with prefix
     if request.path.startswith(current_prefix):
         request.environ['SCRIPT_NAME'] = current_prefix
 
@@ -574,6 +579,24 @@ def set_security_headers(response):
     response.headers.setdefault('Content-Security-Policy', csp)
     if request.is_secure:
         response.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+    return response
+
+
+@app.after_request
+def normalize_redirect_location(response):
+    try:
+        if response.status_code in (301, 302, 303, 307, 308):
+            loc = response.headers.get('Location')
+            if loc:
+                from urllib.parse import urlparse
+                p = urlparse(loc)
+                if p.scheme and p.netloc:
+                    newloc = p.path or '/'
+                    if p.query:
+                        newloc = f"{newloc}?{p.query}"
+                    response.headers['Location'] = newloc
+    except Exception:
+        pass
     return response
 
 
@@ -1604,118 +1627,8 @@ def check_in_approval():
                                         # Check if work permit certificate is also uploaded now
                                         if not work_permit_missing or (work_permit_file and work_permit_file.filename != '') or work_permit_captured_image:
                                             # Both documents are now uploaded
-                                            # Send notification to HOD
-                                            try:
-                                                host = visitor.host
-                                                if host and host.department:
-                                                    hod_user = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
-                                                    if hod_user and hod_user.email:
-                                                        hod_subject = f"Vendor Service Visitor Documents Uploaded: {visitor.name} Requires Final Approval"
-                                                        hod_html_body = f"""
-                                                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
-                                                            <div style="background-color: #28a745; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
-                                                                <h2 style="margin: 0;">Vendor Service Visitor Documents Uploaded</h2>
-                                                            </div>
-                                                            <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                                                                <p style="font-size: 16px;">Dear <strong>{hod_user.username}</strong>,</p>
-                                                                <p style="font-size: 16px; line-height: 1.6;">
-                                                                    A vendor service visitor has uploaded required documents and requires your final approval after EHS review.
-                                                                </p>
-                                                                
-                                                                <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
-                                                                    <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Email:</strong> {visitor.email or 'N/A'}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Mobile:</strong> {visitor.mobile}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Company:</strong> {visitor.company or 'N/A'}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Unit:</strong> {visitor.unit}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Host:</strong> {visitor.host.username if visitor.host else 'N/A'}</p>
-                                                                    <p style="margin: 5px 0;"><strong>Uploaded At:</strong> {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}</p>
-                                                                </div>
-                                                                
-                                                                <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
-                                                                    <p style="margin: 5px 0;"><strong>Documents Uploaded:</strong></p>
-                                                                    <ul style="margin: 10px 0; padding-left: 20px;">
-                                                                        <li>Work Permit Certificate: {'Yes' if visitor.work_permit_certificate else 'No'}</li>
-                                                                        <li>Safety Measures Checklist: {'Yes' if visitor.safety_measures_checklist else 'No'}</li>
-                                                                    </ul>
-                                                                </div>
-                                                                
-                                                                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
-                                                                    <p style="font-size: 16px; color: #666;">
-                                                                        <strong>Workflow Status:</strong>
-                                                                    </p>
-                                                                    <ul style="color: #666; font-size: 14px; line-height: 1.8;">
-                                                                        <li>✓ Registration approved by you</li>
-                                                                        <li>✓ Documents uploaded by visitor</li>
-                                                                        <li>• Pending: EHS review and approval</li>
-                                                                        <li>• Pending: Your final approval for check-in</li>
-                                                                    </ul>
-                                                                </div>
-                                                                
-                                                                <p style="margin-top: 30px; font-size: 16px;">Please wait for EHS approval, then log in to the VMS system to provide your final approval for check-in.</p>
-                                                                <p style="font-size: 16px;">
-                                                                    Best regards,<br>
-                                                                    <strong>Violin Technologies Pvt Ltd</strong>
-                                                                </p>
-                                                            </div>
-                                                            <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
-                                                                <p>This is an automated email. Please do not reply to this message.</p>
-                                                            </div>
-                                                        </div>
-                                                        """
-                                                        
-                                                        hod_plain_body = f"""
-                                                        ════════════════════════════════════════════════════════════
-                                                            VENDOR SERVICE VISITOR DOCUMENTS UPLOADED - FINAL APPROVAL REQUIRED
-                                                        ════════════════════════════════════════════════════════════
-                                                        
-                                                        Dear {hod_user.username},
-                                                        
-                                                        A vendor service visitor has uploaded required documents and requires your final approval after EHS review.
-                                                        
-                                                        VISITOR DETAILS:
-                                                        Name: {visitor.name}
-                                                        Visitor ID: {visitor.Visitor_ID}
-                                                        Email: {visitor.email or 'N/A'}
-                                                        Mobile: {visitor.mobile}
-                                                        Purpose: {visitor.purpose}
-                                                        Company: {visitor.company or 'N/A'}
-                                                        Unit: {visitor.unit}
-                                                        Host: {visitor.host.username if visitor.host else 'N/A'}
-                                                        Uploaded At: {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}
-                                                        
-                                                        DOCUMENTS UPLOADED:
-                                                        Work Permit Certificate: {'Yes' if visitor.work_permit_certificate else 'No'}
-                                                        Safety Measures Checklist: {'Yes' if visitor.safety_measures_checklist else 'No'}
-                                                        
-                                                        WORKFLOW STATUS:
-                                                        ✓ Registration approved by you
-                                                        ✓ Documents uploaded by visitor
-                                                        • Pending: EHS review and approval
-                                                        • Pending: Your final approval for check-in
-                                                        
-                                                        Please wait for EHS approval, then log in to the VMS system to provide your final approval for check-in.
-                                                        
-                                                        Best regards,
-                                                        Violin Technologies Pvt Ltd
-                                                        
-                                                        ════════════════════════════════════════════════════════════
-                                                        This is an automated email. Please do not reply to this message.
-                                                        ════════════════════════════════════════════════════════════
-                                                        """
-                                                        
-                                                        send_email(hod_user.email, hod_subject, hod_plain_body, html_body=hod_html_body, async_mode=True)
-                                                        logging.info(f'HOD notification sent to {hod_user.email} for visitor {visitor.name}')
-                                            except Exception as e:
-                                                logging.error(f'Error sending HOD notification: {str(e)}')
-                                            
-                                            if request.headers.get('Content-Type', '').startswith('application/json') or \
-                                               request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest':
-                                                return jsonify({'success': True, 'message': 'Work permit certificate and safety measures checklist uploaded successfully! HOD notification sent.'})
-                                            else:
-                                                flash('Work permit certificate and safety measures checklist uploaded successfully! HOD notification sent.', 'success')
+                                            # No HOD notification needed - EHS approval will be sufficient
+                                            message = 'Both documents uploaded successfully! EHS approval process will begin. No further HOD approval required.'
                                         else:
                                             # Only safety measures checklist uploaded, work permit still needed
                                             if request.headers.get('Content-Type', '').startswith('application/json') or \
@@ -1795,7 +1708,7 @@ def check_in_approval():
                     
                     # Only allow check-in if status is 'approved'
                     if visitor.status == 'approved':
-                        # For vendor service visitors, also require EHS approval
+                        # For vendor service visitors, EHS approval is sufficient - no second HOD approval required
                         if visitor.purpose and 'Vendor Service' in visitor.purpose:
                             if not visitor.ehs_approved:
                                 flash(f"Visitor {visitor.name} (ID: {visitor_id}) requires EHS approval before check-in. Please wait for EHS department approval.", 'error')
@@ -3366,65 +3279,8 @@ def ehs_approve_visitor():
                 visitor.ehs_rejection_reason = None
                 db.session.commit()
                 
-                message = f'Visitor {visitor.name} approved by EHS successfully! Notification sent.'
-                
-                # Send notification to HOD
-                try:
-                    host = visitor.host
-                    if host and host.department:
-                        hod_user = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
-                        if hod_user and hod_user.email:
-                            hod_subject = f'EHS Approval Completed: {visitor.name} Requires Your Final Approval'
-                            hod_html_body = f"""
-                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
-                                <div style="background-color: #28a745; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
-                                    <h2 style="margin: 0;">EHS Approval Completed</h2>
-                                </div>
-                                <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                                    <p style="font-size: 16px;">Dear <strong>{hod_user.username}</strong>,</p>
-                                    <p style="font-size: 16px; line-height: 1.6;">
-                                        The EHS department has completed their review and approved the documents for vendor service visitor <strong>{visitor.name}</strong>.
-                                    </p>
-                                    
-                                    <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
-                                        <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
-                                        <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
-                                        <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
-                                        <p style="margin: 5px 0;"><strong>EHS Approved At:</strong> {visitor.ehs_approved_at.strftime('%Y-%m-%d %H:%M:%S')}</p>
-                                    </div>
-                                    
-                                    <p style="margin-top: 30px; font-size: 16px;">Please log in to the VMS system to provide your final approval for check-in.</p>
-                                    <p style="font-size: 16px;">
-                                        Best regards,<br>
-                                        <strong>Violin Technologies Pvt Ltd</strong>
-                                    </p>
-                                </div>
-                            </div>
-                            """
-                            
-                            hod_plain_body = f"""
-                            EHS Approval Completed
-                            
-                            Dear {hod_user.username},
-                            
-                            The EHS department has completed their review and approved the documents for vendor service visitor {visitor.name}.
-                            
-                            Visitor Details:
-                            - Name: {visitor.name}
-                            - Visitor ID: {visitor.Visitor_ID}
-                            - Purpose: {visitor.purpose}
-                            - EHS Approved At: {visitor.ehs_approved_at.strftime('%Y-%m-%d %H:%M:%S')}
-                            
-                            Please log in to the VMS system to provide your final approval for check-in.
-                            
-                            Best regards,
-                            Violin Technologies Pvt Ltd
-                            """
-                            
-                            send_email(hod_user.email, hod_subject, hod_plain_body, html_body=hod_html_body, async_mode=True)
-                            logging.info(f'HOD notification sent to {hod_user.email} for EHS approved visitor {visitor.name}')
-                except Exception as e:
-                    logging.error(f'Error sending HOD notification for EHS approval: {str(e)}')
+                message = f'Visitor {visitor.name} approved by EHS successfully! No further approval required - visitor can now check in.'
+                # HOD notification removed - EHS approval is now sufficient for check-in
                 
             elif action == 'reject':
                 # Reject EHS
@@ -3619,6 +3475,16 @@ def uploaded_file(filename):
     if not has_access:
         abort(403)
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
+@app.route('/')
+def root_redirect():
+    return redirect(url_for('index'))
+
+
+@app.route('/login', methods=['GET'])
+def login_path_redirect():
+    return redirect(url_for('login'))
 
 
 @app.route(get_url_prefix() + '/')
@@ -3979,10 +3845,147 @@ if __name__ != "__main__":
 
 def trigger_ehs_notification(visitor):
     """Trigger EHS notification when both documents are uploaded"""
-    # Simple implementation for now - just log that it was called
     logging.info(f"EHS notification triggered for visitor {visitor.name} (ID: {visitor.Visitor_ID})")
-    # In a real implementation, this would send emails to EHS personnel and HOD
-    pass
+    
+    # Find safety personnel for the visitor's unit
+    try:
+        # First priority: Find safety personnel in the same unit as the visitor
+        safety_users = User.query.filter(
+            User.unit == visitor.unit,
+            User.is_active == True,
+            db.or_(
+                User.department.ilike('%safety%'),
+                User.department.ilike('%ehs%'),
+                User.role == 'safety'
+            )
+        ).all()
+        
+        # If no unit-specific safety personnel found, look for general safety personnel
+        if not safety_users:
+            safety_users = User.query.filter(
+                User.is_active == True,
+                db.or_(
+                    User.department.ilike('%safety%'),
+                    User.department.ilike('%ehs%'),
+                    User.role == 'safety'
+                )
+            ).all()
+        
+        # If still no safety personnel found, try users with 'safety' in username
+        if not safety_users:
+            safety_users = User.query.filter(
+                db.or_(
+                    User.username.ilike('%safety%'),
+                    User.username.ilike('%ehs%')
+                ),
+                User.is_active == True
+            ).all()
+        
+        # If no safety personnel found, fall back to admin users
+        if not safety_users:
+            safety_users = User.query.filter(
+                User.role == 'admin',
+                User.is_active == True
+            ).limit(1).all()
+        
+        # Send notification to the first safety person found (to avoid multiple emails)
+        if safety_users:
+            safety_user = safety_users[0]  # Take only the first safety person to avoid spam
+            if safety_user.email:
+                subject = f"New Vendor Service Documents for Approval: {visitor.name}"
+                html_body = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                    <div style="background-color: #ffc107; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+                        <h2 style="margin: 0;">Vendor Service Documents for Approval</h2>
+                    </div>
+                    <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                        <p style="font-size: 16px;">Dear <strong>{safety_user.username}</strong>,</p>
+                        <p style="font-size: 16px; line-height: 1.6;">
+                            A vendor service visitor has uploaded required documents and requires your safety approval.
+                        </p>
+                        
+                        <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
+                            <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                            <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                            <p style="margin: 5px 0;"><strong>Email:</strong> {visitor.email or 'N/A'}</p>
+                            <p style="margin: 5px 0;"><strong>Mobile:</strong> {visitor.mobile}</p>
+                            <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
+                            <p style="margin: 5px 0;"><strong>Company:</strong> {visitor.company or 'N/A'}</p>
+                            <p style="margin: 5px 0;"><strong>Unit:</strong> {visitor.unit}</p>
+                            <p style="margin: 5px 0;"><strong>Host:</strong> {visitor.host.username if visitor.host else 'N/A'}</p>
+                            <p style="margin: 5px 0;"><strong>Uploaded At:</strong> {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}</p>
+                        </div>
+                        
+                        <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+                            <p style="margin: 0 0 10px 0; font-weight: bold;">Documents Uploaded:</p>
+                            <ul style="margin: 0; padding-left: 20px;">
+                                <li>Work Permit Certificate: {'Yes' if visitor.work_permit_certificate else 'No'}</li>
+                                <li>Safety Measures Checklist: {'Yes' if visitor.safety_measures_checklist else 'No'}</li>
+                            </ul>
+                        </div>
+                        
+                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                            <p style="font-size: 16px; color: #666;">
+                                <strong>Next Steps:</strong>
+                            </p>
+                            <ol style="color: #666; font-size: 14px; line-height: 1.8;">
+                                <li>Login to the VMS system</li>
+                                <li>Navigate to the EHS Approval Dashboard</li>
+                                <li>Review the uploaded documents</li>
+                                <li>Provide your safety approval</li>
+                            </ol>
+                        </div>
+                        
+                        <p style="margin-top: 30px; font-size: 16px;">Please log in to the VMS system to review and approve the documents.</p>
+                        <p style="font-size: 16px;">
+                            Best regards,<br>
+                            <strong>Violin Technologies Pvt Ltd</strong>
+                        </p>
+                    </div>
+                </div>
+                """
+                
+                plain_body = f"""
+                Vendor Service Documents for Approval
+                
+                Dear {safety_user.username},
+                
+                A vendor service visitor has uploaded required documents and requires your safety approval.
+                
+                VISITOR DETAILS:
+                - Name: {visitor.name}
+                - Visitor ID: {visitor.Visitor_ID}
+                - Email: {visitor.email or 'N/A'}
+                - Mobile: {visitor.mobile}
+                - Purpose: {visitor.purpose}
+                - Company: {visitor.company or 'N/A'}
+                - Unit: {visitor.unit}
+                - Host: {visitor.host.username if visitor.host else 'N/A'}
+                - Uploaded At: {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}
+                
+                DOCUMENTS UPLOADED:
+                - Work Permit Certificate: {'Yes' if visitor.work_permit_certificate else 'No'}
+                - Safety Measures Checklist: {'Yes' if visitor.safety_measures_checklist else 'No'}
+                
+                NEXT STEPS:
+                1. Login to the VMS system
+                2. Navigate to the EHS Approval Dashboard
+                3. Review the uploaded documents
+                4. Provide your safety approval
+                
+                Please log in to the VMS system to review and approve the documents.
+                
+                Best regards,
+                Violin Technologies Pvt Ltd
+                """
+                
+                send_email(safety_user.email, subject, plain_body, html_body=html_body, async_mode=True)
+                logging.info(f'Safety notification sent to {safety_user.email} for visitor {visitor.name}')
+        else:
+            logging.warning(f'No safety personnel found for visitor {visitor.name} in unit {visitor.unit}')
+                
+    except Exception as e:
+        logging.error(f'Error sending safety notification for visitor {visitor.name}: {str(e)}')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001)

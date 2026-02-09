@@ -217,6 +217,26 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Safety Measures Checklist Section (for Vendor Services) -->
+                <hr class="section-divider">
+                <h5 class="section-title"><i class="fas fa-shield-alt me-2"></i>Safety Measures Checklist</h5>
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-2">
+                        <div class="info-item">
+                            <label class="info-label"><i class="fas fa-clipboard-check me-2"></i>Safety Checklist Document</label>
+                            <div class="info-value">
+                                {% if visitor.safety_measures_checklist %}
+                                <a href="{{ url_for('uploaded_file', filename=visitor.safety_measures_checklist) }}" target="_blank" class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-external-link-alt me-1"></i>View Document
+                                </a>
+                                {% else %}
+                                N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 {% endif %}
 
                 {% if visitor.materials %}
