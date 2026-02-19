@@ -166,6 +166,10 @@ def _prime_local_assets():
 # Define IST timezone
 IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
+# File type validation helper function
+def valid_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png'}
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -463,7 +467,12 @@ def set_setting(key, value):
     else:
         setting = SystemSetting(key=key, value=value)
         db.session.add(setting)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Database Commit Failed: {e}")
+        raise
 
 def send_email_background(to_email, subject, body, html_body=None, embedded_image_path=None, embedded_image_cid=None, visitor=None):
     """Internal function to send email in the background"""
@@ -558,7 +567,41 @@ def send_email(to_email, subject, body, html_body=None, embedded_image_path=None
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    from pymysql.err import OperationalError
+    
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            user = db.session.get(User, int(user_id))
+            return user
+        except OperationalError as e:
+            if attempt < max_retries and e.args[0] in (2013, 2006):  # Lost connection or Gone away
+                logging.warning(f"MySQL connection lost in user_loader (attempt {attempt + 1}): {e}")
+                # Rollback and close the stale session
+                try:
+                    db.session.rollback()
+                except:
+                    pass
+                # Remove the session to force a new connection
+                try:
+                    db.session.remove()
+                except:
+                    pass
+                # Wait a bit before retrying
+                import time
+                time.sleep(0.1 * (attempt + 1))
+                continue
+            else:
+                logging.error(f"OperationalError in user_loader after {attempt + 1} attempts: {e}")
+                return None
+        except Exception as e:
+            logging.error(f"Unexpected error in user_loader: {e}")
+            # Rollback on any other exception
+            try:
+                db.session.rollback()
+            except:
+                pass
+            return None
 
 @app.before_request
 def adjust_script_root():
@@ -600,6 +643,17 @@ def normalize_redirect_location(response):
     return response
 
 
+# Configure SQLAlchemy logging to see queries (for debugging)
+import logging
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+@app.teardown_request
+def shutdown_session(exception=None):
+    if exception:
+        db.session.rollback()
+    db.session.remove()
+
+
 def _generate_captcha_text(length=6):
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
     return ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -611,7 +665,7 @@ def captcha_image():
     # Generate captcha text and store with TTL
     text = _generate_captcha_text(6)
     session['captcha_text'] = text
-    session['captcha_exp'] = time.time() + 120  # 2 minutes
+    session['captcha_exp'] = time.time() + 600  # 10 minutes
 
     # Create a moderately sized, normal-font image
     width, height = 180, 60
@@ -955,7 +1009,12 @@ def reset_password():
             return render_template('reset_password.html')
 
         user.password_hash = generate_password_hash(new_password, method='scrypt:32768:8:1')
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Database Commit Failed: {e}")
+            raise
 
         session.pop('otp_verified_user_id', None) # Clear the session variable after successful reset
         flash('Your password has been reset successfully! Please log in with your new password.', 'success')
@@ -1521,7 +1580,12 @@ def check_in_approval():
                                         
                                         # Update visitor with work permit certificate path
                                         visitor.work_permit_certificate = filename
-                                        db.session.commit()
+                                        try:
+                                            db.session.commit()
+                                        except Exception as e:
+                                            db.session.rollback()
+                                            app.logger.error(f"Database Commit Failed: {e}")
+                                            raise
                                         
                                         # Check if safety measures checklist is also uploaded now
                                         if not safety_measures_missing or (safety_measures_file and safety_measures_file.filename != '') or safety_measures_captured_image:
@@ -1568,7 +1632,12 @@ def check_in_approval():
                                             
                                             # Update visitor with work permit certificate path
                                             visitor.work_permit_certificate = filename
-                                            db.session.commit()
+                                            try:
+                                                db.session.commit()
+                                            except Exception as e:
+                                                db.session.rollback()
+                                                app.logger.error(f"Database Commit Failed: {e}")
+                                                raise
                                             
                                             # Check if safety measures checklist is also uploaded now
                                             if not safety_measures_missing or (safety_measures_file and safety_measures_file.filename != '') or safety_measures_captured_image:
@@ -1622,7 +1691,12 @@ def check_in_approval():
                                         
                                         # Update visitor with safety measures checklist path
                                         visitor.safety_measures_checklist = filename
-                                        db.session.commit()
+                                        try:
+                                            db.session.commit()
+                                        except Exception as e:
+                                            db.session.rollback()
+                                            app.logger.error(f"Database Commit Failed: {e}")
+                                            raise
                                         
                                         # Check if work permit certificate is also uploaded now
                                         if not work_permit_missing or (work_permit_file and work_permit_file.filename != '') or work_permit_captured_image:
@@ -1666,7 +1740,12 @@ def check_in_approval():
                                             
                                             # Update visitor with safety measures checklist path
                                             visitor.safety_measures_checklist = filename
-                                            db.session.commit()
+                                            try:
+                                                db.session.commit()
+                                            except Exception as e:
+                                                db.session.rollback()
+                                                app.logger.error(f"Database Commit Failed: {e}")
+                                                raise
                                             
                                             # Check if work permit certificate is also uploaded now
                                             if not work_permit_missing or (work_permit_file and work_permit_file.filename != '') or work_permit_captured_image:
@@ -1720,7 +1799,10 @@ def check_in_approval():
                             db.session.commit()
                             flash(f"{visitor.name} checked in successfully!", 'success')
                             return redirect(url_for('check_in_approval', _external=True))  # Redirect back to the same page to refresh list
-                        except Exception as db_error:
+                        except Exception as e:
+                            db.session.rollback()
+                            app.logger.error(f"Database Commit Failed: {e}")
+                            raise
                             db.session.rollback()
                             logging.error(f"Database error during check-in: {db_error}")
                             flash(f"Database error during check-in: {db_error}", 'error')
@@ -1814,7 +1896,12 @@ def handle_work_permit_upload(visitor, work_permit_file, work_permit_captured_im
             
             # Update visitor with work permit certificate path
             visitor.work_permit_certificate = filename
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"Database Commit Failed: {e}")
+                raise
             
             # Check if both documents are now uploaded
             both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
@@ -1863,7 +1950,12 @@ def handle_work_permit_upload(visitor, work_permit_file, work_permit_captured_im
                 
                 # Update visitor with work permit certificate path
                 visitor.work_permit_certificate = filename
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    app.logger.error(f"Database Commit Failed: {e}")
+                    raise
                 
                 # Check if both documents are now uploaded
                 both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
@@ -1922,7 +2014,12 @@ def handle_safety_checklist_upload(visitor, safety_measures_file, safety_measure
             
             # Update visitor with safety measures checklist path
             visitor.safety_measures_checklist = filename
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"Database Commit Failed: {e}")
+                raise
             
             # Check if both documents are now uploaded
             both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
@@ -1971,7 +2068,12 @@ def handle_safety_checklist_upload(visitor, safety_measures_file, safety_measure
                 
                 # Update visitor with safety measures checklist path
                 visitor.safety_measures_checklist = filename
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    app.logger.error(f"Database Commit Failed: {e}")
+                    raise
                 
                 # Check if both documents are now uploaded
                 both_uploaded = visitor.work_permit_certificate and visitor.safety_measures_checklist
@@ -2035,9 +2137,14 @@ def check_out_approval():
                     if visitor.status == 'checked-in':
                         visitor.check_out_time = datetime.now(IST_TIMEZONE)
                         visitor.status = 'exited' # Update status to exited
-                        db.session.commit()
-                        flash(f"{visitor.name} checked out successfully!", 'success')
-                        return redirect(url_for('check_out_approval',_external=True)) # Redirect back to the same page to refresh list
+                        try:
+                            db.session.commit()
+                            flash(f"{visitor.name} checked out successfully!", 'success')
+                            return redirect(url_for('check_out_approval',_external=True)) # Redirect back to the same page to refresh list
+                        except Exception as e:
+                            db.session.rollback()
+                            app.logger.error(f"Database Commit Failed: {e}")
+                            raise
                     else:
                         flash(f"Visitor {visitor.name} (ID: {visitor_id}) is not checked-in for check-out. Current status: {visitor.status}", 'error')
                 else:
@@ -2208,12 +2315,14 @@ def register_visitor():
             file = request.files['id_proof']
             if file and file.filename:
                 filename = secure_filename(file.filename)
-                allowed = {'.png', '.jpg', '.jpeg', '.pdf'}
-                ext = os.path.splitext(filename)[1].lower()
-                if ext not in allowed:
+                
+                # Validate file type server-side
+                if not valid_file(filename):
+                    ext = os.path.splitext(filename)[1].lower()
                     logging.warning(f"Rejected upload with disallowed extension: {ext}")
-                    flash("Unsupported file type for ID proof.", 'error')
+                    flash("Invalid file type for ID proof.", 'error')
                     return render_template('register_visitor.html', employees=employees)
+                ext = os.path.splitext(filename)[1].lower()
                 unique_name = f"id_{(Visitor_ID or 'unknown')}_{uuid4().hex}{ext}"
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
                 try:
@@ -2304,7 +2413,12 @@ def register_visitor():
         # Add to DB and commit (so visitor.id is available)
         try:
             db.session.add(new_visitor)
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"Database Commit Failed: {e}")
+                raise
             visitor = new_visitor  # persisted instance
             logging.info(f"Visitor created with ID: {visitor.id}, Visitor_ID: {visitor.Visitor_ID}")
             logging.info(f"Materials saved: {len(visitor.materials)} materials linked to visitor {visitor.id}")
@@ -2322,7 +2436,1344 @@ def register_visitor():
             # Save visitor photo after visitor object is committed and has an ID
             if visitor_photo_data and 'temp_photo_binary_data' in locals():
                 try:
-                    photo_filename = f"{temp_photo_filename_prefix}_{visitor.Visitor_ID}.png"
+                    photo_filename = f"{temp_photo_filename_prefix}_{visitor.Visitor_ID}.jpg"
+                    photo_path = os.path.join(app.config['UPLOAD_FOLDER'], photo_filename)
+                    with open(photo_path, 'wb') as f:
+                        f.write(temp_photo_binary_data)
+                    visitor.visitor_image = photo_filename
+                    db.session.commit()
+                    logging.info(f"Visitor photo saved: {photo_path}")
+                except Exception as e:
+                    db.session.rollback()
+                    logging.error(f"Error saving visitor photo after commit: {e}")
+                    flash("Error saving visitor photo.", 'error')
+                    return render_template('register_visitor.html', employees=employees)
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error adding visitor to database: {e}")
+            flash("Error adding visitor to database.", 'error')
+            return render_template('register_visitor.html', employees=employees)
+
+        # Generate QR code and save file (use visitor.Visitor_ID)
+        try:
+            qr = qrcode.QRCode(version=1, box_size=10, border=5)
+            unique_data = str(visitor.Visitor_ID)
+            qr.add_data(unique_data)
+            qr.make(fit=True)
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+
+            qr_filename = f"qr_visitor_{visitor.Visitor_ID}.png"
+            qr_path = os.path.join(app.config['UPLOAD_FOLDER'], qr_filename)
+            try:
+                logging.info(f"Generating QR code with Visitor_ID: {unique_data}")
+                qr_img.save(qr_path)
+                visitor.qr_code = qr_filename
+                db.session.commit()
+                logging.info(f"QR code saved and visitor updated: {qr_filename}")
+            except Exception as e:
+                db.session.rollback()
+                logging.error(f"Error saving QR code or updating visitor: {e}")
+        except Exception as e:
+            logging.error(f"Error generating QR code: {e}")
+
+        # Send email to visitor with details and QR code
+        try:
+            if visitor.email:
+                subject = "Your Visitor Registration Details"
+                # Format the email body as in the image
+                body = f"Dear {visitor.name},\n\nHere are your registration details."
+                html_body = f"""
+            <p>Dear {h(visitor.name)},</p>
+            <p>
+            Greeting from Violin Technologies Pvt Ltd!\n<br>
+            Your visitor registration is successful. Below are your details:<br>
+            </p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Name</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.name) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">VisitorType</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visitor_type or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Mobile</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.mobile) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Email</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.email or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Company</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ visitor.company or 'N/A' }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Purpose</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.purpose or 'N/A') }</td>
+                        </tr>
+                         <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visitor ID</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.Visitor_ID) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visit Location</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visit_location or 'N/A') }</td>
+                        </tr>
+                    </table>
+                    <p>Thank you for registering your visit to our organization. Your details have been successfully submitted and are currently awaiting approval from the concerned department.</p>
+                    <p>You will receive a confirmation email once your visit request has been reviewed and approved. Please wait for further communication before arriving at our premises.</p>
+                    <p>For any urgent inquiries or assistance, please feel free to contact our team</p>
+                    <p>Best regards,<br>Violin Technologies Pvt Ltd</p>
+            """
+                # Send email in background
+                send_email(visitor.email, subject, body, html_body=html_body, visitor=visitor, async_mode=True)
+                # Email status not checked due to async mode
+            else:
+                flash("Visitor email address is missing.", 'warning')
+        except Exception as e:
+            logging.error(f"Error sending email to visitor: {e}")
+            flash("Error sending email to visitor.", 'error')
+
+        # Send approval email to host (if host exists)
+        try:
+            # Refresh the visitor object to ensure materials are loaded
+            db.session.refresh(visitor)
+            
+            host = User.query.get(host_id) if host_id else None
+            host_plain_body = ""  # Initialize host_plain_body
+            host_html_body = "" # Initialize host_html_body
+            if host and host.email:
+                approval_link = url_for('approve_visitor', visitor_id=visitor.id, _external=True)
+                rejection_link = url_for('reject_visitor', visitor_id=visitor.id, _external=True)
+                
+                # Determine who should receive the approval request - HOD if host is not admin
+                if host.role != 'admin' and host.department:
+                    # Find the HOD for the host's department
+                    hod = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
+                    if hod:
+                        approval_recipient = hod
+                        host_subject = f"Visitor Approval Request: {visitor.name} for {host.username} (Department: {host.department})"
+                    else:
+                        # If no HOD found, default to the host
+                        approval_recipient = host
+                        host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
+                else:
+                    # Admins receive requests directly
+                    approval_recipient = host
+                    host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
+
+                # HTML body (includes visitor photo if available)
+                host_html_body += f"""
+                    <p>Dear {h(approval_recipient.username)},</p>
+                    <p>A new visitor, <strong>{h(visitor.name)}</strong>, has registered to meet {host.username}.</p>
+                    
+                    <p><strong>Visitor Details:</strong></p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Name</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.name) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">VisitorType</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visitor_type or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Mobile</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.mobile) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Email</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.email or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Company</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.company or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Purpose</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.purpose or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visitor ID</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.Visitor_ID) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visit Location</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visit_location or 'N/A') }</td>
+                        </tr>
+                    </table>
+                """
+
+                # Materials Table
+                if visitor.materials:
+                    host_html_body += """
+                    <p style="margin-top: 20px;"><strong>Material Details:</strong></p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr style="background-color: #f2f2f2;">
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">SI.No</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Material Name</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Type</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Make</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Serial Number</th>
+                        </tr>
+                    """
+                    for i, material in enumerate(visitor.materials):
+                        host_html_body += f"""
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{i + 1}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.name or 'N/A')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.type or 'N/A')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.make or 'N/A')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.serial_number or 'N/A')}</td>
+                        </tr>
+                        """
+                    host_html_body += "</table>"
+                else:
+                    host_html_body += '<p style="margin-top: 20px;"><strong>Material Details:</strong> No materials declared.</p>'
+
+                if visitor.visitor_image:
+                    host_html_body += f'<p><strong>Visitor Photo:</strong><br><img src="cid:visitor_photo" alt="Visitor Photo" style="max-width:200px;border-radius:5px;"></p>'
+
+                # Add approve/reject buttons
+                host_html_body += f"""
+                    <p>Please approve or reject this visit:</p>
+                    <p>
+                        <a href="{approval_link}" style="padding:10px 20px; border-radius:5px; text-decoration:none; background:#28a745; color:#fff;">Approve</a>
+                        <a href="{rejection_link}" style="padding:10px 20px; border-radius:5px; text-decoration:none; background:#dc3545; color:#fff; margin-left:10px;">Reject</a>
+                    </p>
+                    <p>Best regards,<br>VMS Team</p>
+                """
+
+                embedded_image_path = os.path.join(app.config['UPLOAD_FOLDER'], visitor.visitor_image) if visitor.visitor_image else None
+                send_results = []
+                # Send to appropriate approval recipient (HOD or host) in background
+                send_email(approval_recipient.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                send_results.append(True)  # Assume success in async mode
+
+                # Also send to approvers (all admins) - but not duplicate if HOD is also admin
+                approvers = User.query.filter_by(role='admin', is_active=True).all()
+                for approver in approvers:
+                    # Don't send duplicate email if the HOD is also an admin
+                    if approver.email and approver.email != approval_recipient.email:
+                        send_email(approver.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                        send_results.append(True)  # Assume success in async mode
+
+                # Send notification to the host (employee being visited) about the visitor registration
+                host_notification_subject = f"Visitor Registration Notification: {visitor.name} wants to meet you"
+                host_notification_body = f"""
+Dear {h(host.username)},
+
+A visitor has registered to meet you:
+
+Name: {h(visitor.name)}
+Mobile: {h(visitor.mobile)}
+Email: {h(visitor.email)}
+Purpose: {h(visitor.purpose)}
+
+This visitor is currently awaiting approval from your department head.
+
+Best regards,
+VMS Team
+"""
+                
+                host_notification_result = False
+                if host.email and host.email != approval_recipient.email:
+                    # Don't send duplicate if the host is also the approval recipient (HOD)
+                    send_email(host.email, host_notification_subject, host_notification_body, html_body=None, visitor=visitor, async_mode=True)
+                    host_notification_result = True  # Assume success in async mode
+                    
+                if any(send_results):
+                    if host_notification_result:
+                        flash("Approval email sent to HOD/approvers and notification sent to host.", 'success')
+                    else:
+                        flash("Approval email sent to HOD/approvers.", 'success')
+                else:
+                    flash("Failed to send approval email to HOD/approvers.", 'error')
+            else:
+                flash("Host email address is missing.", 'warning')
+        except Exception as e:
+            logging.error(f"Error sending approval email to host: {e}")
+            flash("Error sending approval email to host.", 'error')
+
+        flash('Visitor registered successfully.', 'success')
+        return redirect(url_for('dashboard',_external=True))
+
+    except Exception as e:
+        logging.error(f"Unhandled error in register_visitor: {e}")
+        flash("An unexpected error occurred while registering the visitor.", 'error')
+        return render_template('register_visitor.html', employees=employees)
+
+@app.route(get_url_prefix() + '/public_register_visitor', methods=['GET', 'POST'])
+@csrf.exempt
+@rate_limit(limit=20, window=60, name='public_register_visitor')
+def public_register_visitor():
+    # Public visitor registration - no login required
+    employees = User.query.filter_by(role='employee', is_active=True).all()
+
+    if request.method == 'GET':
+        generated_visitor_id = ''.join(random.choices('0123456789', k=5))
+        return render_template('public_register_visitor.html', employees=employees, generated_visitor_id=generated_visitor_id)
+
+    # POST processing for public registration
+    try:
+        # Debug: Log all form data
+        logging.info("="*50)
+        logging.info("PUBLIC REGISTER VISITOR FORM SUBMISSION")
+        logging.info(f"Form keys: {list(request.form.keys())}")
+        logging.info(f"Form values preview: {dict(list(request.form.items())[:10])}")
+        logging.info("="*50)
+        
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        mobile = request.form.get('mobile', '').strip()
+        
+        # Handle purpose dropdown and additional fields
+        purpose = request.form.get('purpose', '').strip()
+        other_purpose = request.form.get('other_purpose', '').strip()
+        company_name = request.form.get('company_name', '').strip()
+        esi_insurance_no = request.form.get('esi_insurance_no', '').strip()
+        
+        # Process purpose based on selection
+        if purpose == 'Others' and other_purpose.strip():
+            purpose = other_purpose.strip()
+        elif purpose == 'Others' and (not other_purpose or not other_purpose.strip()):
+            flash('Please specify the purpose of visit in the text field when selecting "Others".', 'error')
+            return render_template('public_register_visitor.html', employees=employees)
+        elif purpose == 'Vendor Service':
+            # For Vendor Service, company name and ESI/Insurance No are required
+            if not company_name.strip():
+                flash('Company Name is required when selecting "Vendor Service".', 'error')
+                return render_template('public_register_visitor.html', employees=employees)
+            if not esi_insurance_no.strip():
+                flash('ESI / Insurance No is required when selecting "Vendor Service".', 'error')
+                return render_template('public_register_visitor.html', employees=employees)
+            # Update purpose to include company name
+            purpose = f"Vendor Service - {company_name}"
+        else:
+            # For Interview and Meeting, just use the selected value
+            pass
+        host_id = request.form.get('host_id')
+        try:
+            host_id = int(host_id) if host_id else None
+        except ValueError:
+            host_id = None
+            
+        # Ensure host_id is provided since it's required
+        if not host_id:
+            flash('Please select a host for the visitor.', 'error')
+            return render_template('public_register_visitor.html', employees=employees)
+
+        # Validate captcha from session (if enabled)
+        if app.config.get('ENABLE_CAPTCHA', True):
+            captcha_input = request.form.get('captcha', '').strip()
+            captcha_text = session.get('captcha_text')
+            captcha_exp = session.get('captcha_exp')
+            if not captcha_text or not captcha_exp or time.time() > float(captcha_exp):
+                flash('Captcha expired. Please reload the captcha.', 'error')
+                return render_template('public_register_visitor.html', employees=employees)
+            if captcha_input.lower() != str(captcha_text).lower():
+                flash('Invalid captcha. Try again.', 'error')
+                return render_template('public_register_visitor.html', employees=employees)
+            # Clear captcha from session after successful validation
+            session.pop('captcha_text', None)
+            session.pop('captcha_exp', None)
+
+        id_proof_type = request.form.get('id_proof_type')
+        other_id_proof_type_value = request.form.get('other_id_proof_type')
+        
+        # Validate ID proof fields are mandatory
+        if not id_proof_type:
+            flash('ID Proof Type is required.', 'error')
+            return render_template('public_register_visitor.html', employees=employees)
+        
+        final_id_proof_type = other_id_proof_type_value if id_proof_type == 'Others' else id_proof_type
+
+        # Meeting fields
+        meeting_id = request.form.get('meeting_id')
+        requested_by = request.form.get('requested_by')
+        no_of_hours = request.form.get('no_of_hours', type=int)
+        visit_location = request.form.get('visit_location')
+
+        # Visitor details
+        visitor_type = request.form.get('visitor_type')
+        from_datetime_str = request.form.get('from_datetime')
+        to_datetime_str = request.form.get('to_datetime')
+        from_datetime = datetime.strptime(from_datetime_str, '%Y-%m-%dT%H:%M') if from_datetime_str else datetime.now(IST_TIMEZONE)
+        to_datetime = datetime.strptime(to_datetime_str, '%Y-%m-%dT%H:%M') if to_datetime_str else datetime.now(IST_TIMEZONE)
+        card_identification_name = request.form.get('card_identification_name')
+        Visitor_ID = request.form.get('Visitor_ID')
+        logging.info(f"Visitor_ID received from form: {Visitor_ID}")
+        # Refined cleaning logic for Visitor_ID
+        if Visitor_ID:
+            import re
+            # Attempt to extract only digits from the Visitor_ID string
+            digits_only = re.sub(r'\D', '', Visitor_ID)
+            if digits_only:
+                Visitor_ID = digits_only
+                logging.info(f"Refined Visitor_ID to numerical: {Visitor_ID}")
+            else:
+                logging.warning(f"Could not extract numerical ID from '{Visitor_ID}'. Using original.")
+        unit = request.form.get('visit_location') # Get unit from visit_location field
+
+        # Materials lists (may be empty)
+        material_names = request.form.getlist('material_name[]')
+        material_types = request.form.getlist('material_type[]')
+        material_makes = request.form.getlist('material_make[]')
+        material_serial_numbers = request.form.getlist('material_serial_number[]')
+        
+        logging.info(f"Purpose: {purpose}")
+        logging.info(f"Material form data received:")
+        logging.info(f"  Names: {material_names}")
+        logging.info(f"  Types: {material_types}")
+        logging.info(f"  Makes: {material_makes}")
+        logging.info(f"  Serial Numbers: {material_serial_numbers}")
+
+        # File upload paths (filenames stored)
+        id_proof_path = None
+        visitor_image_path = None
+        
+        # Handle ID proof file upload (optional)
+        if 'id_proof' in request.files:
+            file = request.files['id_proof']
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                
+                # Validate file type server-side
+                if not valid_file(filename):
+                    ext = os.path.splitext(filename)[1].lower()
+                    logging.warning(f"Rejected upload with disallowed extension: {ext}")
+                    flash("Invalid file type for ID proof.", 'error')
+                    return render_template('public_register_visitor.html', employees=employees)
+                ext = os.path.splitext(filename)[1].lower()
+                unique_name = f"id_{(Visitor_ID or 'unknown')}_{uuid4().hex}{ext}"
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+                try:
+                    file.save(file_path)
+                    id_proof_path = os.path.basename(unique_name)
+                    logging.info(f"ID proof saved to {file_path}")
+                except Exception as e:
+                    logging.error(f"Error saving ID proof file: {e}")
+                    flash("Error saving ID proof file.", 'error')
+                    return render_template('public_register_visitor.html', employees=employees)
+        
+        # Handle captured visitor photo (base64 string in form field 'visitor_photo')
+        visitor_photo_data = request.form.get('visitor_photo')
+        
+        # Validate that visitor photo is provided
+        if not visitor_photo_data or not visitor_photo_data.strip():
+            logging.warning("Visitor Photo is missing but allowing registration for testing purposes")
+            # flash('Visitor Photo is required.', 'error')
+            # return render_template('public_register_visitor.html', employees=employees)
+            temp_photo_binary_data = None
+            temp_photo_filename_prefix = None
+        else:
+            try:
+                # Expecting data URI like "data:image/png;base64,....."
+                if ',' in visitor_photo_data:
+                    header, encoded = visitor_photo_data.split(',', 1)
+                else:
+                    encoded = visitor_photo_data
+                binary_data = base64.b64decode(encoded)
+                # Temporarily store binary data and filename, process after visitor is committed
+                temp_photo_binary_data = binary_data
+                temp_photo_filename_prefix = "visitor_photo"
+                logging.info("Visitor photo data received, will save after visitor registration.")
+            except Exception as e:
+                logging.error(f"Error processing visitor photo: {e}")
+                flash("Error processing visitor photo.", 'error')
+                return render_template('public_register_visitor.html', employees=employees)
+        
+        # Check for duplicate Visitor_ID to prevent duplicate registrations
+        existing_visitor = Visitor.query.filter_by(Visitor_ID=Visitor_ID).first()
+        if existing_visitor:
+            logging.warning(f"Duplicate registration attempt for Visitor_ID: {Visitor_ID}")
+            flash(f"A visitor with ID {Visitor_ID} is already registered. Please use a different ID or check the existing registration.", 'error')
+            return render_template('public_register_visitor.html', employees=employees)
+        
+        # Create Visitor object (do not set materials' visitor_id yet)
+        new_visitor = Visitor(
+            name=name,
+            email=email,
+            mobile=mobile,
+            purpose=purpose,
+            host_id=host_id,
+            id_proof_path=id_proof_path,
+            id_proof_type=final_id_proof_type,
+            other_id_proof_type=other_id_proof_type_value,
+            visitor_image=visitor_image_path,
+            created_by=10,  # 10 is the public user ID
+            meeting_id=meeting_id,
+            requested_by=requested_by,
+            no_of_hours=no_of_hours,
+            visit_location=visit_location,
+            visitor_type=visitor_type,
+            company=company_name,  # Use company_name for vendor services, empty for others
+            from_datetime=from_datetime,
+            to_datetime=to_datetime,
+            card_identification_name=card_identification_name,
+            access_group_name='',  # Set to empty string since field was removed
+            Visitor_ID=Visitor_ID,
+            original_visitor_id=request.form.get('Visitor_ID'),
+            esi_insurance_no=esi_insurance_no,
+            unit=unit # Assign unit to new_visitor
+        )
+        # Process and add unique materials to the visitor
+        unique_materials_data = set()
+        for i in range(len(material_names)):
+            name_m = material_names[i].strip() if i < len(material_names) else None
+            type_m = material_types[i].strip() if i < len(material_types) else None
+            make_m = material_makes[i].strip() if i < len(material_makes) else None
+            serial_number_m = material_serial_numbers[i].strip() if i < len(material_serial_numbers) else None
+
+            # Only add if material name is not empty
+            if name_m:
+                unique_materials_data.add((name_m, type_m, make_m, serial_number_m))
+
+        logging.info(f"Processing {len(unique_materials_data)} unique materials for visitor")
+        for name_m, type_m, make_m, serial_number_m in unique_materials_data:
+            mat = Material(
+                name=name_m,
+                type=type_m,
+                make=make_m,
+                serial_number=serial_number_m,
+                visitor_code=Visitor_ID  # Store the same 5-digit Visitor_ID
+            )
+            new_visitor.materials.append(mat)
+            logging.info(f"Added material: {name_m} (Type: {type_m}, Make: {make_m}, Serial: {serial_number_m}, Visitor Code: {Visitor_ID})")
+
+        # Add to DB and commit (so visitor.id is available)
+        try:
+            db.session.add(new_visitor)
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"Database Commit Failed: {e}")
+                raise
+            visitor = new_visitor  # persisted instance
+            logging.info(f"Visitor created with ID: {visitor.id}, Visitor_ID: {visitor.Visitor_ID}")
+            logging.info(f"Materials saved: {len(visitor.materials)} materials linked to visitor {visitor.id}")
+            for mat in visitor.materials:
+                logging.info(f"  - Material ID: {mat.id}, Name: {mat.name}, Visitor_ID: {mat.visitor_id}")
+            # Ensure check-in time is only set upon approval
+            try:
+                visitor.check_in_time = None
+                visitor.status = visitor.status or 'pending'
+                db.session.commit()
+            except Exception as ie:
+                db.session.rollback()
+                logging.error(f"Error normalizing initial visitor state: {ie}")
+
+            # Save visitor photo after visitor object is committed and has an ID
+            if temp_photo_binary_data is not None:
+                try:
+                    photo_filename = f"{temp_photo_filename_prefix}_{visitor.Visitor_ID}.jpg"
+                    photo_path = os.path.join(app.config['UPLOAD_FOLDER'], photo_filename)
+                    with open(photo_path, 'wb') as f:
+                        f.write(temp_photo_binary_data)
+                    visitor.visitor_image = photo_filename
+                    db.session.commit()
+                    logging.info(f"Visitor photo saved: {photo_path}")
+                except Exception as e:
+                    db.session.rollback()
+                    logging.error(f"Error saving visitor photo after commit: {e}")
+                    flash("Error saving visitor photo.", 'error')
+                    return render_template('public_register_visitor.html', employees=employees)
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error adding visitor to database: {e}")
+            flash("Error adding visitor to database.", 'error')
+            return render_template('public_register_visitor.html', employees=employees)
+
+        # Generate QR code and save file (use visitor.Visitor_ID)
+        try:
+            qr = qrcode.QRCode(version=1, box_size=10, border=5)
+            unique_data = str(visitor.Visitor_ID)
+            qr.add_data(unique_data)
+            qr.make(fit=True)
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+
+            qr_filename = f"qr_visitor_{visitor.Visitor_ID}.png"
+            qr_path = os.path.join(app.config['UPLOAD_FOLDER'], qr_filename)
+            try:
+                logging.info(f"Generating QR code with Visitor_ID: {unique_data}")
+                qr_img.save(qr_path)
+                visitor.qr_code = qr_filename
+                db.session.commit()
+                logging.info(f"QR code saved and visitor updated: {qr_filename}")
+            except Exception as e:
+                db.session.rollback()
+                logging.error(f"Error saving QR code or updating visitor: {e}")
+        except Exception as e:
+            logging.error(f"Error generating QR code: {e}")
+
+        # Send email to visitor with details and QR code
+        try:
+            if visitor.email:
+                subject = "Your Visitor Registration Details"
+                # Format the email body as in the image
+                body = f"Dear {visitor.name},\n\nHere are your registration details."
+                html_body = f"""
+            <p>Dear {h(visitor.name)},</p>
+            <p>
+            Greeting from Violin Technologies Pvt Ltd!\n<br>
+            Your visitor registration is successful. Below are your details:<br>
+            </p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Name</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.name) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">VisitorType</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visitor_type or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Mobile</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.mobile) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Email</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.email or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Company</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ visitor.company or 'N/A' }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Purpose</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.purpose or 'N/A') }</td>
+                        </tr>
+                         <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visitor ID</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.Visitor_ID) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visit Location</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visit_location or 'N/A') }</td>
+                        </tr>
+                    </table>
+                    <p>Thank you for registering your visit to our organization. Your details have been successfully submitted and are currently awaiting approval from the concerned department.</p>
+                    <p>You will receive a confirmation email once your visit request has been reviewed and approved. Please wait for further communication before arriving at our premises.</p>
+                    <p>For any urgent inquiries or assistance, please feel free to contact our team</p>
+                    <p>Best regards,<br>Violin Technologies Pvt Ltd</p>
+            """
+                # Send email in background
+                send_email(visitor.email, subject, body, html_body=html_body, visitor=visitor, async_mode=True)
+                # Email status not checked due to async mode
+            else:
+                flash("Visitor email address is missing.", 'warning')
+        except Exception as e:
+            logging.error(f"Error sending email to visitor: {e}")
+            flash("Error sending email to visitor.", 'error')
+
+        # Send approval email to host (if host exists)
+        try:
+            # Refresh the visitor object to ensure materials are loaded
+            db.session.refresh(visitor)
+            
+            host = User.query.get(host_id) if host_id else None
+            host_plain_body = ""  # Initialize host_plain_body
+            host_html_body = "" # Initialize host_html_body
+            if host and host.email:
+                approval_link = url_for('approve_visitor', visitor_id=visitor.id, _external=True)
+                rejection_link = url_for('reject_visitor', visitor_id=visitor.id, _external=True)
+                
+                # Determine who should receive the approval request - HOD if host is not admin
+                if host.role != 'admin' and host.department:
+                    # Find the HOD for the host's department
+                    hod = User.query.filter_by(department=host.department, is_hod=True, is_active=True).first()
+                    if hod:
+                        approval_recipient = hod
+                        host_subject = f"Visitor Approval Request: {visitor.name} for {host.username} (Department: {host.department})"
+                    else:
+                        # If no HOD found, default to the host
+                        approval_recipient = host
+                        host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
+                else:
+                    # Admins receive requests directly
+                    approval_recipient = host
+                    host_subject = f"Visitor Approval Request: {visitor.name} for {host.username}"
+
+                # HTML body (includes visitor photo if available)
+                host_html_body += f"""
+                    <p>Dear {h(approval_recipient.username)},</p>
+                    <p>A new visitor, <strong>{h(visitor.name)}</strong>, has registered to meet {host.username}.</p>
+                    
+                    <p><strong>Visitor Details:</strong></p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Name</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.name) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">VisitorType</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visitor_type or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Mobile</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.mobile) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Email</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.email or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Company</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.company or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Purpose</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.purpose or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visitor ID</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.Visitor_ID) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visit Location</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visit_location or 'N/A') }</td>
+                        </tr>
+                    </table>
+                """
+
+                # Materials Table
+                if visitor.materials:
+                    host_html_body += """
+                    <p style="margin-top: 20px;"><strong>Material Details:</strong></p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr style="background-color: #f2f2f2;">
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">SI.No</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Material Name</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Type</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Make</th>
+                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Serial Number</th>
+                        </tr>
+                    """
+                    for i, material in enumerate(visitor.materials):
+                        host_html_body += f"""
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{i + 1}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.name or 'N/A')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.type or 'N/A')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.make or 'N/A')}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{h(material.serial_number or 'N/A')}</td>
+                        </tr>
+                        """
+                    host_html_body += "</table>"
+                else:
+                    host_html_body += '<p style="margin-top: 20px;"><strong>Material Details:</strong> No materials declared.</p>'
+
+                if visitor.visitor_image:
+                    host_html_body += f'<p><strong>Visitor Photo:</strong><br><img src="cid:visitor_photo" alt="Visitor Photo" style="max-width:200px;border-radius:5px;"></p>'
+
+                # Add approve/reject buttons
+                host_html_body += f"""
+                    <p>Please approve or reject this visit:</p>
+                    <p>
+                        <a href="{approval_link}" style="padding:10px 20px; border-radius:5px; text-decoration:none; background:#28a745; color:#fff;">Approve</a>
+                        <a href="{rejection_link}" style="padding:10px 20px; border-radius:5px; text-decoration:none; background:#dc3545; color:#fff; margin-left:10px;">Reject</a>
+                    </p>
+                    <p>Best regards,<br>VMS Team</p>
+                """
+
+                embedded_image_path = os.path.join(app.config['UPLOAD_FOLDER'], visitor.visitor_image) if visitor.visitor_image else None
+                send_results = []
+                # Send to appropriate approval recipient (HOD or host) in background
+                send_email(approval_recipient.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                send_results.append(True)  # Assume success in async mode
+
+                # Also send to approvers (all admins) - but not duplicate if HOD is also admin
+                approvers = User.query.filter_by(role='admin', is_active=True).all()
+                for approver in approvers:
+                    # Don't send duplicate email if the HOD is also an admin
+                    if approver.email and approver.email != approval_recipient.email:
+                        send_email(approver.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                        send_results.append(True)  # Assume success in async mode
+
+                # Send notification to the host (employee being visited) about the visitor registration
+                host_notification_subject = f"Visitor Registration Notification: {visitor.name} wants to meet you"
+                host_notification_body = f"""
+Dear {h(host.username)},
+
+A visitor has registered to meet you:
+
+Name: {h(visitor.name)}
+Mobile: {h(visitor.mobile)}
+Email: {h(visitor.email)}
+Purpose: {h(visitor.purpose)}
+
+This visitor is currently awaiting approval from your department head.
+
+Best regards,
+VMS Team
+"""
+                
+                host_notification_result = False
+                if host.email and host.email != approval_recipient.email:
+                    # Don't send duplicate if the host is also the approval recipient (HOD)
+                    send_email(host.email, host_notification_subject, host_notification_body, html_body=None, visitor=visitor, async_mode=True)
+                    host_notification_result = True  # Assume success in async mode
+                    
+                if any(send_results):
+                    if host_notification_result:
+                        flash("Approval email sent to HOD/approvers and notification sent to host.", 'success')
+                    else:
+                        flash("Approval email sent to HOD/approvers.", 'success')
+                else:
+                    flash("Failed to send approval email to HOD/approvers.", 'error')
+            else:
+                flash("Host email address is missing.", 'warning')
+        except Exception as e:
+            logging.error(f"Error sending approval email to host: {e}")
+            flash("Error sending approval email to host.", 'error')
+
+        flash('Visitor registered successfully.', 'success')
+        
+        # Send email to visitor with details and QR code
+        try:
+            if visitor.email:
+                subject = "Your Visitor Registration Details"
+                # Format the email body as in the image
+                body = f"Dear {visitor.name},\n\nHere are your registration details."
+                html_body = f"""
+            <p>Dear {h(visitor.name)},</p>
+            <p>
+            Greeting from Violin Technologies Pvt Ltd!\n<br>
+            Your visitor registration is successful. Below are your details:<br>
+            </p>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-family: sans-serif;">
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Name</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.name) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">VisitorType</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visitor_type or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Mobile</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.mobile) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Email</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.email or 'N/A') }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Company</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ visitor.company or 'N/A' }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Purpose</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.purpose or 'N/A') }</td>
+                        </tr>
+                         <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visitor ID</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.Visitor_ID) }</td>
+                        </tr>
+                        <tr>
+                        <td style="padding:4px 15px 4px 4px; font-weight:bold;">Visit Location</td>
+                        <td style="padding:4px 8px;">:</td>
+                        <td style="padding:4px;">{ h(visitor.visit_location or 'N/A') }</td>
+                        </tr>
+                    </table>
+                    <p>Thank you for registering your visit to our organization. Your details have been successfully submitted and are currently awaiting approval from the concerned department.</p>
+                    <p>You will receive a confirmation email once your visit request has been reviewed and approved. Please wait for further communication before arriving at our premises.</p>
+                    <p>For any urgent inquiries or assistance, please feel free to contact our team</p>
+                    <p>Best regards,<br>Violin Technologies Pvt Ltd</p>
+            """
+                # Send email in background
+                send_email(visitor.email, subject, body, html_body=html_body, visitor=visitor, async_mode=True)
+                # Email status not checked due to async mode
+            else:
+                flash("Visitor email address is missing.", 'warning')
+        except Exception as e:
+            logging.error(f"Error sending email to visitor: {e}")
+            flash("Error sending email to visitor.", 'error')
+        
+        # Send approval email to host (if host exists)
+        try:
+            # Refresh the visitor object to ensure materials are loaded
+            db.session.refresh(visitor)
+            
+            host = User.query.get(host_id) if host_id else None
+            host_plain_body = ""  # Initialize host_plain_body
+            host_html_body = "" # Initialize host_html_body
+            if host and host.email:
+                approval_link = url_for('approve_visitor', visitor_id=visitor.id, _external=True)
+                rejection_link = url_for('reject_visitor', visitor_id=visitor.id, _external=True)
+                
+                # Check if the host is also an HOD in their department
+                dept_hod = User.query.filter_by(department=host.department if host else 'General', is_hod=True, is_active=True).first() if host else None
+                
+                # If host is also the HOD, they can directly approve
+                if dept_hod and dept_hod.id == host.id:
+                    host_subject = f"Visitor Registration for Approval - {visitor.name}"
+                    host_plain_body = f"""
+Dear {host.username},
+
+A visitor has registered for approval:
+
+Name: {visitor.name}
+Mobile: {visitor.mobile}
+Email: {visitor.email or 'N/A'}
+Purpose: {visitor.purpose}
+Visitor ID: {visitor.Visitor_ID}
+
+Please review and approve or reject this visitor using the links below:
+
+Approve: {approval_link}
+Reject: {rejection_link}
+
+Best regards,
+VMS Team
+"""
+                    host_html_body = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                            <h2 style="color: #333; margin-top: 0;">Visitor Registration for Approval</h2>
+                            <p>Dear <strong>{h(host.username)}</strong>,</p>
+                            
+                            <p>A visitor has registered and requires your approval:</p>
+                            
+                            <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
+                                <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                                <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                                <p style="margin: 5px 0;"><strong>Email:</strong> {visitor.email or 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Mobile:</strong> {visitor.mobile}</p>
+                                <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
+                                <p style="margin: 5px 0;"><strong>Company:</strong> {visitor.company or 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Unit:</strong> {visitor.unit}</p>
+                                <p style="margin: 5px 0;"><strong>Uploaded At:</strong> {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}</p>
+                            </div>
+                            
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{approval_link}" style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 0 10px;">Approve Visitor</a>
+                                <a href="{rejection_link}" style="background-color: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 0 10px;">Reject Visitor</a>
+                            </div>
+                            
+                            <p style="margin-top: 30px; font-size: 16px;">Please review the visitor details and take appropriate action.</p>
+                            <p style="font-size: 16px;">
+                                Best regards,<br>
+                                <strong>Violin Technologies Pvt Ltd</strong>
+                            </p>
+                        </div>
+                    </div>
+"""
+                    approval_recipient = host  # Host is also the HOD
+                else:
+                    # Send to HOD for approval
+                    host_subject = f"Visitor Registration for Approval - {visitor.name}"
+                    host_plain_body = f"""
+Dear {host.username},
+
+A visitor has registered to meet you:
+
+Name: {visitor.name}
+Mobile: {visitor.mobile}
+Email: {visitor.email or 'N/A'}
+Purpose: {visitor.purpose}
+Visitor ID: {visitor.Visitor_ID}
+
+Please review and approve or reject this visitor using the links below:
+
+Approve: {approval_link}
+Reject: {rejection_link}
+
+Best regards,
+VMS Team
+"""
+                    host_html_body = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px;">
+                            <h2 style="color: #333; margin-top: 0;">Visitor Registration for Approval</h2>
+                            <p>Dear <strong>{h(host.username)}</strong>,</p>
+                            
+                            <p>A visitor has registered to meet you:</p>
+                            
+                            <div style="background-color: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0;">
+                                <p style="margin: 5px 0;"><strong>Visitor Name:</strong> {visitor.name}</p>
+                                <p style="margin: 5px 0;"><strong>Visitor ID:</strong> {visitor.Visitor_ID}</p>
+                                <p style="margin: 5px 0;"><strong>Email:</strong> {visitor.email or 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Mobile:</strong> {visitor.mobile}</p>
+                                <p style="margin: 5px 0;"><strong>Purpose:</strong> {visitor.purpose}</p>
+                                <p style="margin: 5px 0;"><strong>Company:</strong> {visitor.company or 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Unit:</strong> {visitor.unit}</p>
+                                <p style="margin: 5px 0;"><strong>Uploaded At:</strong> {datetime.now(IST_TIMEZONE).strftime('%b %d, %Y %I:%M %p')}</p>
+                            </div>
+                            
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{approval_link}" style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 0 10px;">Approve Visitor</a>
+                                <a href="{rejection_link}" style="background-color: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 0 10px;">Reject Visitor</a>
+                            </div>
+                            
+                            <p style="margin-top: 30px; font-size: 16px;">Please review the visitor details and take appropriate action.</p>
+                            <p style="font-size: 16px;">
+                                Best regards,<br>
+                                <strong>Violin Technologies Pvt Ltd</strong>
+                            </p>
+                        </div>
+                    </div>
+"""
+                    # Send to HOD for final approval
+                    if dept_hod:
+                        approval_recipient = dept_hod
+                    else:
+                        # If no HOD, send to host as default approver
+                        approval_recipient = host
+
+                # Send approval email in the background
+                logging.info(f"Visitor Email: {visitor.email} | Host Email: {host.email} | Approval Recipient: {approval_recipient.email if approval_recipient else 'None'}")
+                # Prepare embedded image if visitor photo exists
+                embedded_image_path = None
+                if visitor.visitor_image:
+                    embedded_image_path = os.path.join(app.config['UPLOAD_FOLDER'], visitor.visitor_image)
+                    if not os.path.exists(embedded_image_path):
+                        embedded_image_path = None
+                
+                # Send email to the approval recipient (HOD or host)
+                send_results = []
+                send_email(approval_recipient.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                send_results.append(True)  # Assume success in async mode
+
+                # Also send to approvers (all admins) - but not duplicate if HOD is also admin
+                approvers = User.query.filter_by(role='admin', is_active=True).all()
+                for approver in approvers:
+                    # Don't send duplicate email if the HOD is also an admin
+                    if approver.email and approver.email != approval_recipient.email:
+                        send_email(approver.email, host_subject, host_plain_body, html_body=host_html_body, visitor=visitor, embedded_image_path=embedded_image_path, embedded_image_cid="visitor_photo", async_mode=True)
+                        send_results.append(True)  # Assume success in async mode
+
+                # Send notification to the host (employee being visited) about the visitor registration
+                host_notification_subject = f"Visitor Registration Notification: {visitor.name} wants to meet you"
+                host_notification_body = f"""
+Dear {h(host.username)},
+
+A visitor has registered to meet you:
+
+Name: {h(visitor.name)}
+Mobile: {h(visitor.mobile)}
+Email: {h(visitor.email)}
+Purpose: {h(visitor.purpose)}
+
+This visitor is currently awaiting approval from your department head.
+
+Best regards,
+VMS Team
+"""
+                
+                host_notification_result = False
+                if host.email and host.email != approval_recipient.email:
+                    # Don't send duplicate if the host is also the approval recipient (HOD)
+                    send_email(host.email, host_notification_subject, host_notification_body, html_body=None, visitor=visitor, async_mode=True)
+                    host_notification_result = True  # Assume success in async mode
+                    
+                if any(send_results):
+                    if host_notification_result:
+                        flash("Approval email sent to HOD/approvers and notification sent to host.", 'success')
+                    else:
+                        flash("Approval email sent to HOD/approvers.", 'success')
+                else:
+                    flash("Failed to send approval email to HOD/approvers.", 'error')
+            else:
+                flash("Host email address is missing.", 'warning')
+        except Exception as e:
+            logging.error(f"Error sending approval email to host: {e}")
+            flash("Error sending approval email to host.", 'error')
+        
+        return redirect(url_for('public_register_visitor', _external=True))
+
+    except Exception as e:
+        logging.error(f"Unhandled error in public_register_visitor: {e}")
+        flash("An unexpected error occurred while registering the visitor.", 'error')
+        return render_template('public_register_visitor.html', employees=employees)
+    # Only allow specific roles
+    if current_user.role not in ['admin', 'security', 'employee']:
+        flash('Access denied!', 'error')
+        return redirect(url_for('dashboard',_external=True))
+
+    # Enforce request size safety check
+    if request.content_length and request.content_length > 16000:
+        flash('Upload too large. Request size exceeds 16KB limit.', 'error')
+        return render_template('register_visitor.html', employees=[]), 413
+
+    employees = User.query.filter_by(role='employee', is_active=True).all()
+
+    if request.method == 'GET':
+        generated_visitor_id = ''.join(random.choices('0123456789', k=5))
+        return render_template('register_visitor.html', employees=employees, generated_visitor_id=generated_visitor_id)
+
+    # POST processing
+    try:
+        # Debug: Log all form data
+        logging.info("="*50)
+        logging.info("REGISTER VISITOR FORM SUBMISSION")
+        logging.info(f"Form keys: {list(request.form.keys())}")
+        logging.info(f"Form values preview: {dict(list(request.form.items())[:10])}")
+        logging.info("="*50)
+        
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        mobile = request.form.get('mobile', '').strip()
+        
+        # Handle purpose dropdown and additional fields
+        purpose = request.form.get('purpose', '').strip()
+        other_purpose = request.form.get('other_purpose', '').strip()
+        company_name = request.form.get('company_name', '').strip()
+        esi_insurance_no = request.form.get('esi_insurance_no', '').strip()
+        
+        # Process purpose based on selection
+        if purpose == 'Others' and other_purpose.strip():
+            purpose = other_purpose.strip()
+        elif purpose == 'Others' and (not other_purpose or not other_purpose.strip()):
+            flash('Please specify the purpose of visit in the text field when selecting "Others".', 'error')
+            return render_template('register_visitor.html', employees=employees)
+        elif purpose == 'Vendor Service':
+            # For Vendor Service, company name and ESI/Insurance No are required
+            if not company_name.strip():
+                flash('Company Name is required when selecting "Vendor Service".', 'error')
+                return render_template('register_visitor.html', employees=employees)
+            if not esi_insurance_no.strip():
+                flash('ESI / Insurance No is required when selecting "Vendor Service".', 'error')
+                return render_template('register_visitor.html', employees=employees)
+            # Update purpose to include company name
+            purpose = f"Vendor Service - {company_name}"
+        else:
+            # For Interview and Meeting, just use the selected value
+            pass
+        host_id = request.form.get('host_id')
+        try:
+            host_id = int(host_id) if host_id else None
+        except ValueError:
+            host_id = None
+            
+        # Ensure host_id is provided since it's required
+        if not host_id:
+            flash('Please select a host for the visitor.', 'error')
+            return render_template('register_visitor.html', employees=employees)
+
+        id_proof_type = request.form.get('id_proof_type')
+        other_id_proof_type_value = request.form.get('other_id_proof_type')
+        
+        # Validate ID proof fields are mandatory
+        if not id_proof_type:
+            flash('ID Proof Type is required.', 'error')
+            return render_template('register_visitor.html', employees=employees)
+        
+        final_id_proof_type = other_id_proof_type_value if id_proof_type == 'Others' else id_proof_type
+
+        # Meeting fields
+        meeting_id = request.form.get('meeting_id')
+        requested_by = request.form.get('requested_by')
+        no_of_hours = request.form.get('no_of_hours', type=int)
+        visit_location = request.form.get('visit_location')
+
+        # Visitor details
+        visitor_type = request.form.get('visitor_type')
+        from_datetime_str = request.form.get('from_datetime')
+        to_datetime_str = request.form.get('to_datetime')
+        from_datetime = datetime.strptime(from_datetime_str, '%Y-%m-%dT%H:%M') if from_datetime_str else datetime.now(IST_TIMEZONE)
+        to_datetime = datetime.strptime(to_datetime_str, '%Y-%m-%dT%H:%M') if to_datetime_str else datetime.now(IST_TIMEZONE)
+        card_identification_name = request.form.get('card_identification_name')
+        Visitor_ID = request.form.get('Visitor_ID')
+        logging.info(f"Visitor_ID received from form: {Visitor_ID}")
+        # Refined cleaning logic for Visitor_ID
+        if Visitor_ID:
+            import re
+            # Attempt to extract only digits from the Visitor_ID string
+            digits_only = re.sub(r'\D', '', Visitor_ID)
+            if digits_only:
+                Visitor_ID = digits_only
+                logging.info(f"Refined Visitor_ID to numerical: {Visitor_ID}")
+            else:
+                logging.warning(f"Could not extract numerical ID from '{Visitor_ID}'. Using original.")
+        unit = request.form.get('visit_location') # Get unit from visit_location field
+
+        # Materials lists (may be empty)
+        material_names = request.form.getlist('material_name[]')
+        material_types = request.form.getlist('material_type[]')
+        material_makes = request.form.getlist('material_make[]')
+        material_serial_numbers = request.form.getlist('material_serial_number[]')
+        
+        logging.info(f"Purpose: {purpose}")
+        logging.info(f"Material form data received:")
+        logging.info(f"  Names: {material_names}")
+        logging.info(f"  Types: {material_types}")
+        logging.info(f"  Makes: {material_makes}")
+        logging.info(f"  Serial Numbers: {material_serial_numbers}")
+
+        # File upload paths (filenames stored)
+        id_proof_path = None
+        visitor_image_path = None
+        
+        # Handle ID proof file upload (optional)
+        if 'id_proof' in request.files:
+            file = request.files['id_proof']
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                
+                # Validate file type server-side
+                if not valid_file(filename):
+                    ext = os.path.splitext(filename)[1].lower()
+                    logging.warning(f"Rejected upload with disallowed extension: {ext}")
+                    flash("Invalid file type for ID proof.", 'error')
+                    return render_template('register_visitor.html', employees=employees)
+                ext = os.path.splitext(filename)[1].lower()
+                unique_name = f"id_{(Visitor_ID or 'unknown')}_{uuid4().hex}{ext}"
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+                try:
+                    file.save(file_path)
+                    id_proof_path = os.path.basename(unique_name)
+                    logging.info(f"ID proof saved to {file_path}")
+                except Exception as e:
+                    logging.error(f"Error saving ID proof file: {e}")
+                    flash("Error saving ID proof file.", 'error')
+                    return render_template('register_visitor.html', employees=employees)
+        
+        # Handle captured visitor photo (base64 string in form field 'visitor_photo')
+        visitor_photo_data = request.form.get('visitor_photo')
+        
+        # Validate that visitor photo is provided
+        if not visitor_photo_data or not visitor_photo_data.strip():
+            flash('Visitor Photo is required.', 'error')
+            return render_template('register_visitor.html', employees=employees)
+        
+        if visitor_photo_data:
+            try:
+                # Expecting data URI like "data:image/png;base64,....."
+                if ',' in visitor_photo_data:
+                    header, encoded = visitor_photo_data.split(',', 1)
+                else:
+                    encoded = visitor_photo_data
+                binary_data = base64.b64decode(encoded)
+                # Temporarily store binary data and filename, process after visitor is committed
+                temp_photo_binary_data = binary_data
+                temp_photo_filename_prefix = "visitor_photo"
+                logging.info("Visitor photo data received, will save after visitor registration.")
+            except Exception as e:
+                logging.error(f"Error processing visitor photo: {e}")
+                flash("Error processing visitor photo.", 'error')
+                return render_template('register_visitor.html', employees=employees)
+        
+        # Create Visitor object (do not set materials' visitor_id yet)
+        new_visitor = Visitor(
+            name=name,
+            email=email,
+            mobile=mobile,
+            purpose=purpose,
+            host_id=host_id,
+            id_proof_path=id_proof_path,
+            id_proof_type=final_id_proof_type,
+            other_id_proof_type=other_id_proof_type_value,
+            visitor_image=visitor_image_path,
+            created_by=current_user.id,
+            meeting_id=meeting_id,
+            requested_by=requested_by,
+            no_of_hours=no_of_hours,
+            visit_location=visit_location,
+            visitor_type=visitor_type,
+            company=company_name,  # Use company_name for vendor services, empty for others
+            from_datetime=from_datetime,
+            to_datetime=to_datetime,
+            card_identification_name=card_identification_name,
+            access_group_name='',  # Set to empty string since field was removed
+            Visitor_ID=Visitor_ID,
+            original_visitor_id=request.form.get('Visitor_ID'),
+            esi_insurance_no=esi_insurance_no,
+            unit=unit # Assign unit to new_visitor
+        )
+        # Process and add unique materials to the visitor
+        unique_materials_data = set()
+        for i in range(len(material_names)):
+            name_m = material_names[i].strip() if i < len(material_names) else None
+            type_m = material_types[i].strip() if i < len(material_types) else None
+            make_m = material_makes[i].strip() if i < len(material_makes) else None
+            serial_number_m = material_serial_numbers[i].strip() if i < len(material_serial_numbers) else None
+
+            # Only add if material name is not empty
+            if name_m:
+                unique_materials_data.add((name_m, type_m, make_m, serial_number_m))
+
+        logging.info(f"Processing {len(unique_materials_data)} unique materials for visitor")
+        for name_m, type_m, make_m, serial_number_m in unique_materials_data:
+            mat = Material(
+                name=name_m,
+                type=type_m,
+                make=make_m,
+                serial_number=serial_number_m,
+                visitor_code=Visitor_ID  # Store the same 5-digit Visitor_ID
+            )
+            new_visitor.materials.append(mat)
+            logging.info(f"Added material: {name_m} (Type: {type_m}, Make: {make_m}, Serial: {serial_number_m}, Visitor Code: {Visitor_ID})")
+
+        # Add to DB and commit (so visitor.id is available)
+        try:
+            db.session.add(new_visitor)
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.error(f"Database Commit Failed: {e}")
+                raise
+            visitor = new_visitor  # persisted instance
+            logging.info(f"Visitor created with ID: {visitor.id}, Visitor_ID: {visitor.Visitor_ID}")
+            logging.info(f"Materials saved: {len(visitor.materials)} materials linked to visitor {visitor.id}")
+            for mat in visitor.materials:
+                logging.info(f"  - Material ID: {mat.id}, Name: {mat.name}, Visitor_ID: {mat.visitor_id}")
+            # Ensure check-in time is only set upon approval
+            try:
+                visitor.check_in_time = None
+                visitor.status = visitor.status or 'pending'
+                db.session.commit()
+            except Exception as ie:
+                db.session.rollback()
+                logging.error(f"Error normalizing initial visitor state: {ie}")
+
+            # Save visitor photo after visitor object is committed and has an ID
+            if visitor_photo_data and 'temp_photo_binary_data' in locals():
+                try:
+                    photo_filename = f"{temp_photo_filename_prefix}_{visitor.Visitor_ID}.jpg"
                     photo_path = os.path.join(app.config['UPLOAD_FOLDER'], photo_filename)
                     with open(photo_path, 'wb') as f:
                         f.write(temp_photo_binary_data)

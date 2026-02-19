@@ -10,6 +10,12 @@
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Visitor Registration Form</h5>
+                {% if public_access %}
+                <div class="alert alert-info mt-2 mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Public Registration:</strong> This is a public visitor registration form. No login required.
+                </div>
+                {% endif %}
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data">
@@ -118,8 +124,8 @@
                     <div class="mb-3">
                         <label for="id_proof" class="form-label">ID Proof *</label>
                         <input type="file" class="form-control" id="id_proof" name="id_proof"
-                                 accept="image/*,.pdf,.doc,.docx" required>
-                        <div class="form-text">Accepted formats: Images, PDF, DOC, DOCX (Max 16MB)</div>
+                                 accept="image/jpeg,image/png" required>
+                        <div class="form-text">Only JPG/PNG images allowed. Files are automatically optimized for upload.</div>
                     </div>
 
                      <div class="mb-3">
@@ -137,6 +143,7 @@
                             </div>
                             <input type="hidden" id="visitorPhoto" name="visitor_photo" required>
                         </div>
+                        <div id="photoSizeInfo" class="form-text" style="display: none;">Captured photo size: <span id="photoSizeValue"></span></div>
                         <div class="form-text">Capture a photo of the visitor using the camera.</div>
                     </div>
                     
@@ -159,9 +166,15 @@
                     </div>
                     
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+                        {% if public_access %}
+                        <a href="{{ url_for('public_register_visitor') }}" class="btn btn-secondary me-md-2">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        {% else %}
                         <a href="{{ url_for('dashboard') }}" class="btn btn-secondary me-md-2">
                             <i class="fas fa-times me-2"></i>Cancel
                         </a>
+                        {% endif %}
                         <button type="submit" class="btn btn-primary me-md-4">
                             <i class="fas fa-save me-2"></i>Register Visitor
                         </button>
@@ -173,10 +186,34 @@
 </div>
 
 <script>
+// Image compression function
+async function compressImage(file) {
+    return new Promise(resolve => {
+        const img = new Image();
+        const reader = new FileReader();
+
+        reader.onload = e => img.src = e.target.result;
+        reader.readAsDataURL(file);
+
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const scale = 300 / img.width;
+
+            canvas.width = 300;
+            canvas.height = img.height * scale;
+
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.2);
+        };
+    });
+}
+
 // Wait for DOM to be fully loaded before running scripts
 document.addEventListener('DOMContentLoaded', function() {
     // Form validation
-    document.querySelector('form').addEventListener('submit', function(e) {
+    document.querySelector('form').addEventListener('submit', async function(e) {
         const mobile = document.getElementById('mobile').value;
         const email = document.getElementById('email').value;
         const purposeSelect = document.getElementById('purpose').value;
@@ -250,6 +287,47 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Please capture a visitor photo');
             return false;
         }
+        
+        // Compress ID proof image if present
+        if (idProofFile.files.length > 0) {
+            const compressedIdProof = await compressImage(idProofFile.files[0]);
+            
+            const dt = new DataTransfer();
+            dt.items.add(new File([compressedIdProof], "id_proof.jpg", { type: "image/jpeg" }));
+            
+            idProofFile.files = dt.files;
+        }
+        
+        // Compress visitor photo if it's a captured image
+        if (visitorPhoto.value.startsWith('data:image')) {
+            // Convert data URL to blob for compression
+            const byteString = atob(visitorPhoto.value.split(',')[1]);
+            const mimeString = visitorPhoto.value.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            
+            const blob = new Blob([ab], { type: mimeString });
+            const file = new File([blob], "visitor_photo.jpg", { type: "image/jpeg" });
+            
+            const compressedPhoto = await compressImage(file);
+            
+            // Update the hidden input with the compressed image data URL
+            const reader = new FileReader();
+            reader.onload = function() {
+                visitorPhoto.value = reader.result;
+                
+                // Finally submit the form
+                this.submit();
+            }.bind(this);
+            reader.readAsDataURL(compressedPhoto);
+        } else {
+            // If no data URL, just submit the form
+            this.submit();
+        }
     });
 
     // File size validation
@@ -300,11 +378,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    captureButton.addEventListener('click', () => {
+    captureButton.addEventListener('click', async () => {
         if (stream) {
             context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
             const imageDataURL = cameraCanvas.toDataURL('image/png');
-            visitorPhotoInput.value = imageDataURL;
+            
+            // Convert data URL to blob for compression
+            const byteString = atob(imageDataURL.split(',')[1]);
+            const mimeString = imageDataURL.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            
+            const blob = new Blob([ab], { type: mimeString });
+            const file = new File([blob], "visitor_photo.jpg", { type: "image/jpeg" });
+            
+            // Compress the image
+            const compressedPhoto = await compressImage(file);
+            
+            // Update the hidden input with the compressed image data URL
+            const reader = new FileReader();
+            reader.onload = function() {
+                visitorPhotoInput.value = reader.result;
+                
+                // Calculate and display the compressed photo size
+                const fileSizeKB = ((reader.result.length - reader.result.indexOf(',') - 1) * 3 / 4 / 1024).toFixed(2);
+                document.getElementById('photoSizeValue').textContent = fileSizeKB + ' KB';
+                document.getElementById('photoSizeInfo').style.display = 'block';
+            };
+            reader.readAsDataURL(compressedPhoto);
+            
             cameraFeed.style.display = 'none';
             cameraCanvas.style.display = 'block';
             captureButton.disabled = true;

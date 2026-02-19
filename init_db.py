@@ -18,12 +18,12 @@ except ImportError:
 
 def create_database():
     """Create the database if it doesn't exist"""
-    db_type = Config.DB_TYPE.lower()
+    db_type = os.environ.get('DB_TYPE', 'mysql').lower()
 
     if db_type == 'mysql':
         try:
             # Extract MySQL connection details from DATABASE_URL
-            database_url = Config.SQLALCHEMY_DATABASE_URI
+            database_url = os.environ.get('DATABASE_URL')
             import re
             # Pattern to extract user, password, host, port from mysql url
             pattern = r"mysql\\+mysqlconnector://([^:]+):([^@]+)@([^:/]+):?(\\d+)?/"
@@ -57,7 +57,7 @@ def create_database():
     elif db_type == 'postgresql':
         try:
             # Extract PostgreSQL connection details from DATABASE_URL
-            database_url = Config.SQLALCHEMY_DATABASE_URI
+            database_url = os.environ.get('DATABASE_URL')
             import re
             # Pattern to extract user, password, host, port from postgresql url
             pattern = r"postgresql://([^:]+):([^@]+)@([^:/]+):?(\d+)?/"
@@ -183,8 +183,8 @@ def main():
     print("🚀 VMS Pro Database Initialization")
     print("=" * 40)
 
-    print(f"📋 Database Type: {Config.DB_TYPE}")
-    print(f"🔗 Database URL: {Config.SQLALCHEMY_DATABASE_URI}")
+    print(f"📋 Database Type: {os.environ.get('DB_TYPE', 'mysql')}")
+    print(f"🔗 Database URL: {os.environ.get('DATABASE_URL')}")
     print()
 
     if not create_database():

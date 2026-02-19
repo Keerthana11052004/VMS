@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register Visitor - VMS Pro</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/select2/css/select2.min.css') }}" rel="stylesheet" />
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding: 20px;
+        }
+        .registration-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            border: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            transform: translateY(-2px);
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        .material-item {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+        }
+        .alert-info {
+            border-radius: 8px;
+            border: none;
+        }
+        .company-logo {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: contain;
+            margin: 0 auto 15px auto;
+            display: block;
+            background-color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="registration-container">
+        <div class="card">
+            <div class="card-header text-center">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Company Logo" class="company-logo">
+                <h3 class="mb-0">Visitor Registration Form</h3>
+                <p class="mb-0 mt-2">Violin Technologies Pvt Ltd</p>
+                <div class="alert alert-info mt-3 mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Public Registration:</strong> This is a public visitor registration form. No login required.
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show auto-dismiss" role="alert" style="font-size: 16px; font-weight: bold;">
+                                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-triangle' if category == 'warning' else 'times-circle' if category == 'error' else 'info-circle' }} me-2"></i>
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <h5 class="mt-4 mb-3"><i class="fas fa-user-circle me-2"></i>Visitor Details</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">Visitor Name *</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="mobile" class="form-label">Mobile Number *</label>
+                            <input type="text" class="form-control" id="mobile" name="mobile" required maxlength="10" pattern="[0-9]{10}" title="Mobile number must be 10 digits" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="host_id" class="form-label">Person to Meet *</label>
+                            <select class="form-select select2" id="host_id" name="host_id" required>
+                                <option value="">Select Employee to Meet</option>
+                                {% for employee in employees %}
+                                <option value="{{ employee.id }}">{{ employee.username }} ({{ employee.department }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="visitor_type" class="form-label">Visitor Type</label>
+                            <select class="form-select" id="visitor_type" name="visitor_type">
+                                <option value="General">General</option>
+                                <option value="Personal">Personal</option>
+                                <option value="Official">Official</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="Visitor_ID" class="form-label">Visitor ID</label>
+                            <input type="text" class="form-control" id="Visitor_ID" name="Visitor_ID" value="{{ generated_visitor_id }}" readonly>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="visit_location" class="form-label">Visit Location *</label>
+                        <select class="form-select" id="visit_location" name="visit_location" required>
+                            <option value="">Select Location</option>
+                            <option value="Unit-1">Unit-1</option>
+                            <option value="Unit-2">Unit-2</option>
+                            <option value="Unit-3">Unit-3</option>
+                            <option value="Unit-4">Unit-4</option>
+                            <option value="Unit-5">Unit-5</option>
+                            <option value="GSS">GSS</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="purpose" class="form-label">Purpose of Visit *</label>
+                        <select class="form-select" id="purpose" name="purpose" required>
+                            <option value="" selected disabled>Select Purpose of Visit</option>
+                            <option value="Interview">Interview</option>
+                            <option value="Meeting">Meeting</option>
+                            <option value="Vendor Service">Vendor Service</option>
+                            <option value="Others">Others</option>
+                        </select>
+                        <div class="mt-2" id="other_purpose_div" style="display: none;">
+                            <label for="other_purpose" class="form-label">Please specify the purpose: *</label>
+                            <input type="text" class="form-control" id="other_purpose" name="other_purpose" placeholder="Enter the purpose of visit" required>
+                        </div>
+                        <div class="mt-2" id="vendor_fields_div" style="display: none;">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="company_name" class="form-label">Company Name *</label>
+                                    <input type="text" class="form-control" id="company_name" name="company_name" placeholder="Enter company name">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="esi_insurance_no" class="form-label">ESI / Insurance No *</label>
+                                    <input type="text" class="form-control" id="esi_insurance_no" name="esi_insurance_no" placeholder="Enter ESI / Insurance number">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+  
+                    <div class="col-md-6 mb-3">
+                        <label for="id_proof_type" class="form-label">Type of ID Proof *</label>
+                        <select class="form-select" id="id_proof_type" name="id_proof_type" required>
+                            <option value="" selected disabled>Select ID Proof Type</option>
+                            <option value="Aadhar">Aadhar</option>
+                            <option value="Pan">Pan</option>
+                            <option value="Business Card">Business Card</option>
+                            <option value="Driving License">Driving License</option>
+                            <option value="Passport">Passport</option>
+                            <option value="Company ID">Company ID</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3" id="other_id_proof_type_div" style="display: none;">
+                        <label for="other_id_proof_type" class="form-label">Other ID Proof Type</label>
+                        <input type="text" class="form-control" id="other_id_proof_type" name="other_id_proof_type">
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_proof" class="form-label">ID Proof *</label>
+                        <input type="file" class="form-control" id="id_proof" name="id_proof"
+                                 accept="image/jpeg,image/png" required>
+                        <div class="form-text">Only JPG/PNG images allowed. Files are automatically optimized for upload.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Visitor Photo *</label>
+                        <div class="border p-2 rounded mb-2">
+                            <video id="cameraFeed" width="100%" height="240" autoplay style="background-color: #eee;"></video>
+                            <canvas id="cameraCanvas" width="320" height="240" style="display: none;"></canvas>
+                            <div class="d-flex justify-content-center mt-2">
+                                <button type="button" id="startCameraButton" class="btn btn-info btn-sm me-2">
+                                    <i class="fas fa-camera me-1"></i>Start Camera
+                                </button>
+                                <button type="button" id="captureButton" class="btn btn-primary btn-sm" disabled>
+                                    <i class="fas fa-camera-retro me-1"></i>Capture Photo
+                                </button>
+                            </div>
+                            <input type="hidden" id="visitorPhoto" name="visitor_photo" required>
+                        </div>
+                        <div id="photoSizeInfo" class="form-text" style="display: none;">Captured photo size: <span id="photoSizeValue"></span></div>
+                        <div class="form-text">Capture a photo of the visitor using the camera.</div>
+                    </div>
+                    
+                    <div class="p-4 border rounded mb-4">
+                        <h5 class="mt-0 mb-3 d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-box me-2"></i>Material Details</span>
+                            <button type="button" class="btn btn-success btn-sm" id="addMaterialBtn">
+                                <i class="fas fa-plus me-1"></i>Add Material
+                            </button>
+                        </h5>
+                        <div id="materialDetailsContainer">
+                            <!-- Material details will be added here by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- CAPTCHA Section -->
+                    {% if config.ENABLE_CAPTCHA %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="captcha" class="form-label">
+                                <i class="fas fa-shield-alt"></i>
+                                Captcha *
+                            </label>
+                            <div class="d-flex align-items-center" style="gap:10px;">
+                                <img id="captcha-img" src="{{ url_for('captcha_image') }}" alt="Captcha" style="height: 48px; border:1px solid #ddd; border-radius:6px; background:#fff;">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshCaptcha()">Refresh</button>
+                            </div>
+                            <input type="text" class="form-control mt-2" id="captcha" name="captcha" placeholder="Enter the text you see" required autocomplete="off">
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> A QR code will be automatically generated for this visitor.
+                        The visitor will need to show this QR code at the exit gate.
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+                        <a href="{{ url_for('public_register_visitor') }}" class="btn btn-secondary me-md-2">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary me-md-4">
+                            <i class="fas fa-save me-2"></i>Register Visitor
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image compression function -->
+    <script>
+    async function compressImage(file) {
+        return new Promise(resolve => {
+            const img = new Image();
+            const reader = new FileReader();
+
+            reader.onload = e => img.src = e.target.result;
+            reader.readAsDataURL(file);
+
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                const scale = 300 / img.width;
+
+                canvas.width = 300;
+                canvas.height = img.height * scale;
+
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.2);
+            };
+        });
+    }
+
+    // Wait for DOM to be fully loaded before running scripts
+    document.addEventListener('DOMContentLoaded', function() {
+        // Form validation
+        document.querySelector('form').addEventListener('submit', async function(e) {
+            const mobile = document.getElementById('mobile').value;
+            const email = document.getElementById('email').value;
+            const purposeSelect = document.getElementById('purpose').value;
+            const otherPurposeInput = document.getElementById('other_purpose');
+            
+            // Mobile number validation
+            if (!/^\d{10}$/.test(mobile.replace(/\s/g, ''))) {
+                e.preventDefault();
+                alert('Please enter a valid mobile number (exactly 10 digits)');
+                return false;
+            }
+            
+            // Email validation (required)
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                e.preventDefault();
+                alert('Please enter a valid email address');
+                return false;
+            }
+            
+            // Purpose validation
+            if (purposeSelect === 'Others' && otherPurposeInput && otherPurposeInput.value.trim() === '') {
+                e.preventDefault();
+                alert('Please specify the purpose of visit when selecting "Others"');
+                return false;
+            } else if (purposeSelect === 'Others' && otherPurposeInput) {
+                // If Others is selected, validate that the other purpose field is not empty
+                if (otherPurposeInput.value.trim() === '') {
+                    e.preventDefault();
+                    alert('Please specify the purpose of visit in the text field when selecting "Others"');
+                    return false;
+                }
+            } else if (purposeSelect === 'Vendor Service') {
+                // If Vendor Service is selected, validate company name and ESI/Insurance No
+                var companyNameInput = document.getElementById('company_name');
+                var esiInsuranceInput = document.getElementById('esi_insurance_no');
+                
+                if (!companyNameInput || companyNameInput.value.trim() === '') {
+                    e.preventDefault();
+                    alert('Company Name is required when selecting "Vendor Service"');
+                    return false;
+                }
+                
+                if (!esiInsuranceInput || esiInsuranceInput.value.trim() === '') {
+                    e.preventDefault();
+                    alert('ESI / Insurance No is required when selecting "Vendor Service"');
+                    return false;
+                }
+            }
+            
+            // ID Proof validation
+            var idProofType = document.getElementById('id_proof_type');
+            var idProofFile = document.getElementById('id_proof');
+            
+            if (!idProofType || idProofType.value === '') {
+                e.preventDefault();
+                alert('Please select an ID Proof Type');
+                return false;
+            }
+            
+            if (!idProofFile.files[0]) {
+                e.preventDefault();
+                alert('Please upload an ID Proof document');
+                return false;
+            }
+            
+            // Visitor Photo validation
+            var visitorPhoto = document.getElementById('visitorPhoto');
+            
+            if (!visitorPhoto.value || visitorPhoto.value.trim() === '') {
+                e.preventDefault();
+                alert('Please capture a visitor photo');
+                return false;
+            }
+            
+            // Compress ID proof image if present
+            if (idProofFile.files.length > 0) {
+                const compressedIdProof = await compressImage(idProofFile.files[0]);
+                
+                const dt = new DataTransfer();
+                dt.items.add(new File([compressedIdProof], "id_proof.jpg", { type: "image/jpeg" }));
+                
+                idProofFile.files = dt.files;
+            }
+            
+            // Compress visitor photo if it's a captured image
+            if (visitorPhoto.value.startsWith('data:image')) {
+                // Convert data URL to blob for compression
+                const byteString = atob(visitorPhoto.value.split(',')[1]);
+                const mimeString = visitorPhoto.value.split(',')[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                
+                const blob = new Blob([ab], { type: mimeString });
+                const file = new File([blob], "visitor_photo.jpg", { type: "image/jpeg" });
+                
+                const compressedPhoto = await compressImage(file);
+                
+                // Update the hidden input with the compressed image data URL
+                const reader = new FileReader();
+                reader.onload = function() {
+                    visitorPhoto.value = reader.result;
+                    
+                    // Finally submit the form
+                    this.submit();
+                }.bind(this);
+                reader.readAsDataURL(compressedPhoto);
+            } else {
+                // If no data URL, just submit the form
+                this.submit();
+            }
+        });
+
+        // File size validation
+        document.getElementById('id_proof').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const maxSize = 16 * 1024 * 1024; // 16MB
+                if (file.size > maxSize) {
+                    alert('File size must be less than 16MB');
+                    this.value = '';
+                }
+            }
+        });
+
+        // Handle "Others" ID Proof Type visibility
+        const idProofTypeDropdown = document.getElementById('id_proof_type');
+        const otherIdProofTypeDiv = document.getElementById('other_id_proof_type_div');
+
+        idProofTypeDropdown.addEventListener('change', function() {
+            if (this.value === 'Others') {
+                otherIdProofTypeDiv.style.display = 'block';
+            } else {
+                otherIdProofTypeDiv.style.display = 'none';
+            }
+        });
+
+        // Camera capture functionality
+        const cameraFeed = document.getElementById('cameraFeed');
+        const cameraCanvas = document.getElementById('cameraCanvas');
+        const captureButton = document.getElementById('captureButton');
+        const startCameraButton = document.getElementById('startCameraButton');
+        const visitorPhotoInput = document.getElementById('visitorPhoto');
+        const context = cameraCanvas.getContext('2d');
+        let stream;
+
+        startCameraButton.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                cameraFeed.srcObject = stream;
+                cameraFeed.style.display = 'block';
+                cameraCanvas.style.display = 'none';
+                captureButton.disabled = false;
+                startCameraButton.textContent = 'Camera On';
+                startCameraButton.disabled = true;
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                alert("Could not access camera. Please ensure it's connected and permissions are granted.");
+            }
+        });
+
+        captureButton.addEventListener('click', async () => {
+            if (stream) {
+                context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+                const imageDataURL = cameraCanvas.toDataURL('image/png');
+                
+                // Convert data URL to blob for compression
+                const byteString = atob(imageDataURL.split(',')[1]);
+                const mimeString = imageDataURL.split(',')[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                
+                const blob = new Blob([ab], { type: mimeString });
+                const file = new File([blob], "visitor_photo.jpg", { type: "image/jpeg" });
+                
+                // Compress the image
+                const compressedPhoto = await compressImage(file);
+                
+                // Update the hidden input with the compressed image data URL
+                const reader = new FileReader();
+                reader.onload = function() {
+                    visitorPhotoInput.value = reader.result;
+                    
+                    // Calculate and display the compressed photo size
+                    const fileSizeKB = ((reader.result.length - reader.result.indexOf(',') - 1) * 3 / 4 / 1024).toFixed(2);
+                    document.getElementById('photoSizeValue').textContent = fileSizeKB + ' KB';
+                    document.getElementById('photoSizeInfo').style.display = 'block';
+                };
+                reader.readAsDataURL(compressedPhoto);
+                
+                cameraFeed.style.display = 'none';
+                cameraCanvas.style.display = 'block';
+                captureButton.disabled = true;
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                startCameraButton.textContent = 'Start Camera';
+                startCameraButton.disabled = false;
+            } else {
+                alert("Please start the camera first.");
+            }
+        });
+
+        // New JavaScript for Material Details
+        const addMaterialBtn = document.getElementById('addMaterialBtn');
+        const materialDetailsContainer = document.getElementById('materialDetailsContainer');
+        let materialCount = 0;
+
+        function addMaterialField() {
+            materialCount++;
+            const materialDiv = document.createElement('div');
+            materialDiv.classList.add('material-item', 'border', 'p-3', 'rounded', 'mb-3');
+            materialDiv.setAttribute('data-material-id', materialCount);
+            materialDiv.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Material #${materialCount}</h6>
+                    <button type="button" class="btn btn-danger btn-sm remove-material-btn">
+                        <i class="fas fa-trash me-1"></i>Remove
+                    </button>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="material_name_${materialCount}" class="form-label">Material Name</label>
+                        <input type="text" class="form-control" id="material_name_${materialCount}" name="material_name[]">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="material_type_${materialCount}" class="form-label">Material Type</label>
+                        <input type="text" class="form-control" id="material_type_${materialCount}" name="material_type[]">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="material_make_${materialCount}" class="form-label">Material Make</label>
+                        <input type="text" class="form-control" id="material_make_${materialCount}" name="material_make[]">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="material_serial_number_${materialCount}" class="form-label">Material Serial Number</label>
+                        <input type="text" class="form-control" id="material_serial_number_${materialCount}" name="material_serial_number[]">
+                    </div>
+                </div>
+            `;
+            materialDetailsContainer.appendChild(materialDiv);
+
+            // Add event listener for the new remove button
+            materialDiv.querySelector('.remove-material-btn').addEventListener('click', function() {
+                materialDiv.remove();
+                updateMaterialNumbers();
+            });
+        }
+
+        function updateMaterialNumbers() {
+            const materialItems = materialDetailsContainer.querySelectorAll('.material-item');
+            materialItems.forEach((item, index) => {
+                const newCount = index + 1;
+                item.setAttribute('data-material-id', newCount);
+                item.querySelector('h6').textContent = `Material #${newCount}`;
+                // Update input field IDs and names
+                item.querySelector(`[id^="material_name_"]`).id = `material_name_${newCount}`;
+                item.querySelector(`[name^="material_name"]`).name = `material_name[]`;
+                item.querySelector(`[id^="material_type_"]`).id = `material_type_${newCount}`;
+                item.querySelector(`[name^="material_type"]`).name = `material_type[]`;
+                item.querySelector(`[id^="material_make_"]`).id = `material_make_${newCount}`;
+                item.querySelector(`[name^="material_make"]`).name = `material_make[]`;
+                item.querySelector(`[id^="material_serial_number_"]`).id = `material_serial_number_${newCount}`;
+                item.querySelector(`[name^="material_serial_number"]`).name = `material_serial_number[]`;
+            });
+            materialCount = materialItems.length; // Reset materialCount to the actual number of items
+        }
+
+        addMaterialBtn.addEventListener('click', addMaterialField);
+
+        // Add one material field by default when the page loads
+        addMaterialField();
+
+        // Initialize Select2 for the host_id dropdown
+        $(document).ready(function() {
+            $('#host_id').select2({
+                placeholder: "Select Employee",
+                allowClear: true,
+                dropdownParent: $('#host_id').parent(),
+                width: '100%',
+                minimumInputLength: 0,
+                templateResult: formatEmployeeResult,
+                templateSelection: formatEmployeeSelection
+            });
+            
+            // Add event listener to the purpose dropdown
+            var purposeSelect = document.getElementById('purpose');
+            if (purposeSelect) {
+                purposeSelect.addEventListener('change', togglePurposeInput);
+                // Initialize the state on page load
+                togglePurposeInput();
+            }
+        });
+        
+        // Function to toggle purpose input based on dropdown selection
+        function togglePurposeInput() {
+            var purposeSelect = document.getElementById('purpose');
+            var otherPurposeDiv = document.getElementById('other_purpose_div');
+            var vendorFieldsDiv = document.getElementById('vendor_fields_div');
+            var otherPurposeInput = document.getElementById('other_purpose');
+            
+            if (purposeSelect && otherPurposeDiv && vendorFieldsDiv && otherPurposeInput) {
+                if (purposeSelect.value === 'Others') {
+                    otherPurposeDiv.style.display = 'block';
+                    otherPurposeInput.required = true;  // Make the field required
+                    vendorFieldsDiv.style.display = 'none';
+                    // Clear vendor fields when not needed
+                    document.getElementById('company_name').value = '';
+                    document.getElementById('esi_insurance_no').value = '';
+                } else if (purposeSelect.value === 'Vendor Service') {
+                    otherPurposeDiv.style.display = 'none';
+                    otherPurposeInput.required = false;  // Remove required attribute
+                    vendorFieldsDiv.style.display = 'block';
+                    // Clear other purpose input when not needed
+                    document.getElementById('other_purpose').value = '';
+                } else {
+                    otherPurposeDiv.style.display = 'none';
+                    otherPurposeInput.required = false;  // Remove required attribute
+                    vendorFieldsDiv.style.display = 'none';
+                    // Clear all additional fields when not needed
+                    document.getElementById('other_purpose').value = '';
+                    document.getElementById('company_name').value = '';
+                    document.getElementById('esi_insurance_no').value = '';
+                }
+            }
+        }
+        
+        // Format function for dropdown results
+        function formatEmployeeResult(employee) {
+            if (!employee.id) {
+                return employee.text;
+            }
+            var $result = $(
+                '<div class="select2-result-employee clearfix">' +
+                    '<div class="select2-result-employee-name">' + employee.text + '</div>' +
+                '</div>'
+            );
+            return $result;
+        }
+        
+        // Format function for selection display
+        function formatEmployeeSelection(employee) {
+            return employee.text || employee.text;
+        }
+    });
+    
+    // Auto-dismiss flash messages
+    $(document).ready(function() {
+        $('.auto-dismiss').each(function() {
+            var $alert = $(this);
+            var category = $alert.hasClass('alert-success') ? 'success' : 
+                          $alert.hasClass('alert-danger') ? 'error' : 
+                          $alert.hasClass('alert-warning') ? 'warning' : 'info';
+            
+            // Set different timeouts based on message type
+            var timeout = 5000; // 5 seconds for success messages (longer visibility)
+            if (category === 'error') {
+                timeout = 7000; // 7 seconds for error messages
+            } else if (category === 'warning') {
+                timeout = 6000; // 6 seconds for warning messages
+            }
+            
+            setTimeout(function() {
+                $alert.fadeOut(500, function() {
+                    $(this).remove();
+                });
+            }, timeout);
+        });
+    });
+    
+    // Refresh CAPTCHA function
+    function refreshCaptcha(){
+      const img = document.getElementById('captcha-img');
+      if(!img) return;
+      const u = new URL(img.src, window.location.origin);
+      u.searchParams.set('ts', Date.now());
+      img.src = u.toString();
+    }
+    </script>
+    
+    <script src="{{ url_for('static', filename='vendor/jquery/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/select2/js/select2.min.js') }}"></script>
+</body>
+</html>
